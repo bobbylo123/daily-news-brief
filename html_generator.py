@@ -78,25 +78,51 @@ def _render_summary(bullets: list[dict[str, Any]]) -> str:
 
 def _render_angles(angles: list[dict[str, Any]]) -> str:
     if not angles:
-        return "<li><em>No angles returned.</em></li>"
-    items = []
-    for a in angles:
-        label = _esc(a.get("angle", "Angle"))
-        outlet = _esc(a.get("outlet", ""))
+        return '<p style="color:{MUTED};font-style:italic;margin:0;">No angles returned.</p>'
+    th_style = (
+        f'text-align:left;padding:8px 12px;font-size:11px;letter-spacing:2px;'
+        f'text-transform:uppercase;color:{GOLD};font-weight:bold;'
+        f'border-bottom:2px solid rgba(201,162,74,0.4);'
+    )
+    rows = [
+        f'<colgroup>'
+        f'<col style="width:22%;">'
+        f'<col style="width:14%;">'
+        f'<col style="width:64%;">'
+        f'</colgroup>'
+        f'<thead><tr>'
+        f'<th style="{th_style}">Angle</th>'
+        f'<th style="{th_style}">Outlet</th>'
+        f'<th style="{th_style}">Perspective</th>'
+        f'</tr></thead>'
+    ]
+    td_base = (
+        f'padding:10px 12px;font-size:13.5px;line-height:1.55;'
+        f'border-bottom:1px solid rgba(201,162,74,0.12);vertical-align:top;'
+    )
+    for i, a in enumerate(angles):
+        label   = _esc(a.get("angle", ""))
+        outlet  = _esc(a.get("outlet", ""))
         summary = _esc(a.get("summary", ""))
-        url = a.get("url", "") or ""
-        cite = (
-            f' <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a>'
-            if outlet and url
-            else (f" <span style=\"color:{MUTED};\">{outlet}</span>" if outlet else "")
+        url     = a.get("url", "") or ""
+        outlet_cell = (
+            f'<a href="{_esc(url)}" target="_blank" rel="noopener" '
+            f'style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a>'
+            if outlet and url else outlet
         )
-        items.append(
-            f'<li style="margin:0 0 12px 0;">'
-            f'<strong style="color:{NAVY};">{label}</strong>{(" -- " + cite) if cite else ""}'
-            f'<div style="color:{INK};margin-top:4px;">{summary}</div>'
-            f"</li>"
+        bg = "rgba(201,162,74,0.05)" if i % 2 == 1 else "transparent"
+        rows.append(
+            f'<tr style="background:{bg};">'
+            f'<td style="{td_base}color:{NAVY};font-weight:bold;">{label}</td>'
+            f'<td style="{td_base}color:{MUTED};font-size:13px;">{outlet_cell}</td>'
+            f'<td style="{td_base}color:{INK};">{summary}</td>'
+            f'</tr>'
         )
-    return "\n".join(items)
+    return (
+        f'<table style="width:100%;border-collapse:collapse;font-family:Georgia,serif;table-layout:fixed;">'
+        + "".join(rows)
+        + '</table>'
+    )
 
 
 def _render_perspectives(persp: list[dict[str, Any]]) -> str:
@@ -245,11 +271,9 @@ def _render_news_item(item: dict[str, Any]) -> str:
           {_render_summary(item.get("summary_bullets") or [])}
         </ul>
       </div>
-      <div class="card-angles" style="background:#fff8eb;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
-        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Different Reporting Angles</div>
-        <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.55;">
-          {_render_angles(item.get("reporting_angles") or [])}
-        </ul>
+      <div class="card-angles" style="background:#fff8eb;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;overflow-x:auto;">
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:12px;">Different Reporting Angles</div>
+        {_render_angles(item.get("reporting_angles") or [])}
       </div>
       <div class="card-persp" style="background:#f3f8f1;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
         <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Diverse Stakeholder Perspectives</div>
@@ -492,6 +516,9 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
   body.dark .lead-source a {{ color:#7ab3d4 !important; border-bottom-color:#4a7a9a !important; }}
   body.dark .card-summary {{ background:#0a1e32 !important; border-color:#1a2e44 !important; color:#d0c8b5 !important; }}
   body.dark .card-angles  {{ background:#1a1400 !important; border-color:#302800 !important; color:#d0c8b5 !important; }}
+  body.dark .card-angles table td, body.dark .card-angles table th {{ color:#d0c8b5 !important; border-bottom-color:rgba(201,162,74,0.15) !important; }}
+  body.dark .card-angles table tr {{ background:transparent !important; }}
+  body.dark .card-angles table a {{ color:#7ab3d4 !important; border-bottom-color:#4a7a9a !important; }}
   body.dark .card-persp   {{ background:#0a1a0f !important; border-color:#1a3020 !important; color:#d0c8b5 !important; }}
   body.dark .card-visual  {{ background:#141000 !important; border-color:#302800 !important; color:#d0c8b5 !important; }}
   body.dark .card-sources {{ border-top-color:#1a2e44 !important; color:#d0c8b5 !important; }}
