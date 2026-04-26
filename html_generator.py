@@ -187,20 +187,36 @@ def _render_news_item(item: dict[str, Any]) -> str:
 
     img_block = ""
     if img_url:
+        fallback_style = (
+            f"display:none;width:100%;padding:18px 20px;margin:6px 0 12px;"
+            f"background:#f5f0e6;border:1px solid {RULE};border-radius:6px;"
+            f"font-size:13px;color:{MUTED};box-sizing:border-box;"
+        )
         img_block = (
-            f'<img src="{_esc(img_url)}" alt="{title}" '
+            f'<img id="img-{abs(hash(img_url))}" src="{_esc(img_url)}" alt="{title}" '
+            f'referrerpolicy="no-referrer" crossorigin="anonymous" '
             f'style="display:block;width:100%;max-height:520px;object-fit:cover;'
-            f"border-radius:6px;margin:6px 0 12px;border:1px solid {RULE};\">"
+            f'border-radius:6px;margin:6px 0 12px;border:1px solid {RULE};" '
+            f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">'
+            f'<div style="{fallback_style}">'
+            f'Image unavailable due to source restrictions. '
+            + (f'<a href="{_esc(lead_url)}" target="_blank" rel="noopener" '
+               f'style="color:{NAVY};font-weight:bold;">View at {lead_name}</a>'
+               if lead_url else "")
+            + f'</div>'
         )
 
     video_block = ""
     if video:
+        outlet = _esc(_outlet_from_url(video))
         video_block = (
-            f'<a href="{_esc(video)}" '
-            f'style="display:inline-block;background:{NAVY};color:{GOLD_SOFT};'
-            f'padding:9px 16px;border-radius:4px;text-decoration:none;font-size:13px;'
+            f'<a href="{_esc(video)}" target="_blank" rel="noopener" '
+            f'style="display:inline-flex;align-items:center;gap:8px;'
+            f'background:{NAVY};color:{GOLD_SOFT};'
+            f'padding:10px 20px;border-radius:4px;text-decoration:none;font-size:13px;'
             f'letter-spacing:1px;text-transform:uppercase;font-weight:bold;margin:4px 0 22px;">'
-            f"Watch Report on {_esc(_outlet_from_url(video))}</a>"
+            f'<span style="font-size:16px;line-height:1;">&#9654;</span>'
+            f'Watch Video Report &mdash; {outlet}</a>'
         )
 
     lead_block = ""
@@ -265,7 +281,33 @@ def _render_preview(items: list[dict[str, Any]]) -> str:
             f"</div>"
         )
     if rows:
-        rows[-1] = rows[-1].replace(f"border-bottom:1px solid rgba(201,162,74,0.25);", "")
+        rows[-1] = rows[-1].replace("border-bottom:1px solid rgba(201,162,74,0.25);", "")
+    return "\n".join(rows)
+
+
+def _render_edition_index(items: list[dict[str, Any]]) -> str:
+    """Right-side newspaper-style 'In This Edition' index (WSJ/FT convention)."""
+    SECTION_NUMS = ["01", "02", "03"]
+    rows = []
+    for i, it in enumerate(items):
+        num = SECTION_NUMS[i] if i < len(SECTION_NUMS) else f"0{i+1}"
+        cat = _esc((it.get("category") or "").upper())
+        lead = it.get("lead_source") or {}
+        source_name = _esc(lead.get("name", ""))
+        title = _esc(_short_title(it.get("title", ""), 72))
+        border = "border-bottom:1px solid rgba(201,162,74,0.18);" if i < len(items) - 1 else ""
+        rows.append(
+            f'<div style="display:flex;gap:12px;padding:10px 0;{border}">'
+            f'<div style="font-family:Georgia,serif;font-size:22px;font-weight:bold;'
+            f'color:rgba(201,162,74,0.35);line-height:1;flex-shrink:0;padding-top:2px;">{num}</div>'
+            f'<div>'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};'
+            f'text-transform:uppercase;margin-bottom:3px;">{cat}</div>'
+            f'<div style="font-size:13px;color:#eae4d4;line-height:1.4;">{title}</div>'
+            + (f'<div style="font-size:11px;color:#8a8070;margin-top:3px;letter-spacing:0.5px;">'
+               f'{source_name}</div>' if source_name else "")
+            + f'</div></div>'
+        )
     return "\n".join(rows)
 
 
@@ -353,10 +395,14 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
               color:#f5f0e6; margin:0 0 6px 0; letter-spacing:1px; }}
   .compiled {{ font-size:13px; color:#a89f87; letter-spacing:2px;
               text-transform:uppercase; margin:0 0 26px 0; }}
+  .hdr-bottom {{ display:grid; grid-template-columns:1fr 1fr; gap:20px;
+                position:relative; z-index:1; }}
   .preview {{ background:rgba(5,15,35,0.55); border:1px solid rgba(201,162,74,0.45);
              border-left:4px solid {GOLD}; border-radius:0 6px 6px 0;
-             padding:16px 22px; text-align:left;
-             max-width:560px; margin:0 auto 0 0; }}
+             padding:16px 22px; text-align:left; }}
+  .edition-index {{ background:rgba(255,255,255,0.04); border:1px solid rgba(201,162,74,0.3);
+                   border-right:4px solid {GOLD}; border-radius:6px 0 0 6px;
+                   padding:16px 22px; text-align:left; }}
   .tabs {{ position: sticky; top:0; z-index:50; display:flex; background:#f7f3ea;
           border-top:2px solid {NAVY}; border-bottom:2px solid {NAVY}; }}
   .tab  {{ flex:1; padding:16px; text-align:center; font-family:'Georgia',serif;
@@ -398,9 +444,15 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
       <p class="motto">{_esc(motto)}</p>
       <div class="big-date">{_esc(big_date)}</div>
       <div class="compiled">{compiled_aut} AUT &nbsp;·&nbsp; {compiled_hkt} HKT</div>
-      <div class="preview">
-        <div style="font-size:11px;letter-spacing:3px;color:{GOLD};font-weight:bold;margin-bottom:10px;">Today's Top Stories</div>
-        {preview_block}
+      <div class="hdr-bottom">
+        <div class="preview">
+          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:12px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">Today's Top Stories</div>
+          {preview_block}
+        </div>
+        <div class="edition-index">
+          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">In This Edition</div>
+          {_render_edition_index(ordered)}
+        </div>
       </div>
     </div>
 

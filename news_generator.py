@@ -51,11 +51,19 @@ Find TODAY'S single most newsworthy story for EACH of these three categories:
 For each story, gather:
   * The official headline (verbatim from the lead source).
   * A direct article URL from the lead outlet.
-  * A topical news photograph URL from a real news outlet (NOT a wiki, NOT
-    generic stock). If genuinely none, leave empty.
-  * A direct video-report URL from a major news outlet's video channel
-    (BBC/Reuters/Bloomberg/AP/CNN/Al Jazeera/SCMP/etc. on YouTube or their own
-    site). If genuinely none, leave empty.
+  * A topical news photograph URL that is DIRECTLY EMBEDDABLE in HTML (i.e.,
+    the CDN does NOT block hotlinking). Strongly prefer these sources in order:
+      1. BBC: ichef.bbci.co.uk/news/... or ichef.bbci.co.uk/ace/...
+      2. Reuters: cloudfront-us-east-2.images.arcpublishing.com/...
+      3. Al Jazeera: www.aljazeera.com/wp-content/uploads/...
+      4. AP: dims.apnews.com/dims4/default/...
+      5. AFP via Getty: media.gettyimages.com/photos/... (only if publicly embeddable)
+    Avoid CBS News, CNBC image CDNs, and SCMP CDN as they block hotlinking.
+    If genuinely none available, leave empty.
+  * A direct video-report URL from a major news outlet's OFFICIAL YouTube channel
+    (BBC News, Reuters, Bloomberg Television, AP, CNN, Al Jazeera English, SCMP,
+    RTHK etc.). Must be a specific video (watch?v=...), not a channel homepage.
+    If genuinely none exists, leave empty.
   * 6-8 attributed summary bullets (each cites an outlet + URL).
   * 4 different reporting angles, EACH from a different outlet.
   * 3-4 stakeholder perspectives with stance + paraphrase + outlet citation.
