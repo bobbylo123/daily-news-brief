@@ -78,11 +78,18 @@ def main() -> int:
 
     if args.no_fetch and json_path.exists():
         print(f"[reuse] loading cached news from {json_path}", flush=True)
-        items = json.loads(json_path.read_text())
+        cached = json.loads(json_path.read_text())
+        if isinstance(cached, list):
+            items, brief_meta = cached, {}
+        else:
+            items = cached.get("items", cached)
+            brief_meta = cached
     else:
         print("[news] querying Claude API with web_search…", flush=True)
-        items = fetch_daily_news()
-        json_path.write_text(json.dumps(items, indent=2, ensure_ascii=False))
+        result = fetch_daily_news()
+        items = result["items"]
+        brief_meta = result
+        json_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"[news] cached → {json_path}", flush=True)
 
     print("[weather] fetching Brisbane weather…", flush=True)
@@ -90,7 +97,7 @@ def main() -> int:
     print(f"[weather] {weather}", flush=True)
 
     print("[html] rendering brief…", flush=True)
-    html = render_html(weather, items)
+    html = render_html(weather, items, brief_meta)
     html_path.write_text(html, encoding="utf-8")
     print(f"[html] saved → {html_path}", flush=True)
 

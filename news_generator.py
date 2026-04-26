@@ -72,6 +72,14 @@ For each story, gather:
     table, etc.). Use only inline styles, no <script>, no external CSS,
     no <link> tags. Keep it under ~1500 characters.
 
+Also provide these two top-level fields:
+  * quote_of_day: The single most striking verbatim quote from any of today's
+    three stories. Include the speaker's full name and title, and the outlet.
+  * market_numbers: 4-6 key stock/financial figures relevant to today's
+    Business & Markets story. Typical labels: S&P 500, NASDAQ, ASX 200,
+    USD/AUD, Gold (oz), Bitcoin. For each: short label, current level as a
+    string, and today's change with sign (e.g. "+1.2%", "-0.8%", "flat").
+
 When the research is done, call the `submit_daily_brief` tool ONCE with all
 three stories in the order: Global, Business & Markets, Hong Kong."""
 
@@ -85,8 +93,32 @@ SUBMIT_TOOL = {
     ),
     "input_schema": {
         "type": "object",
-        "required": ["items"],
+        "required": ["items", "quote_of_day", "market_numbers"],
         "properties": {
+            "quote_of_day": {
+                "type": "object",
+                "required": ["quote", "speaker", "source"],
+                "properties": {
+                    "quote": {"type": "string", "description": "Verbatim striking quote from today's coverage"},
+                    "speaker": {"type": "string", "description": "Full name and title of the speaker"},
+                    "source": {"type": "string", "description": "News outlet name"},
+                },
+            },
+            "market_numbers": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 6,
+                "description": "Key stock market / financial figures from today's Business story",
+                "items": {
+                    "type": "object",
+                    "required": ["label", "value", "change"],
+                    "properties": {
+                        "label": {"type": "string", "description": "Index or ticker name e.g. S&P 500, ASX 200, USD/AUD, Gold"},
+                        "value": {"type": "string", "description": "Current level e.g. 5,432 or 0.6412"},
+                        "change": {"type": "string", "description": "Change with sign e.g. +1.2% or -0.8%"},
+                    },
+                },
+            },
             "items": {
                 "type": "array",
                 "minItems": 3,
@@ -257,7 +289,12 @@ def fetch_daily_news(
         if cat not in by_cat:
             raise ValueError(f"Missing category {cat} in model output")
         ordered.append(_normalise(by_cat[cat]))
-    return ordered
+
+    return {
+        "items": ordered,
+        "quote_of_day": submission.get("quote_of_day") or {},
+        "market_numbers": submission.get("market_numbers") or [],
+    }
 
 
 def _normalise(item: dict[str, Any]) -> dict[str, Any]:

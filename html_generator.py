@@ -132,7 +132,7 @@ def _render_visual_aid(va: dict[str, Any]) -> str:
     # We trust model-supplied HTML but strip script tags defensively.
     inner = inner.replace("<script", "&lt;script").replace("</script", "&lt;/script")
     return (
-        f'<div style="background:#fbf7ec;border:1px solid {RULE};border-left:4px solid {GOLD};'
+        f'<div class="card-visual" style="background:#fbf7ec;border:1px solid {RULE};border-left:4px solid {GOLD};'
         f'padding:18px 20px;border-radius:6px;margin:18px 0;">'
         f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">'
         f"Visual Analysis -- {title}</div>"
@@ -170,7 +170,7 @@ def _render_sources_list(item: dict[str, Any]) -> str:
     if not rows:
         return ""
     return (
-        f'<div style="margin-top:24px;padding-top:14px;border-top:1px solid {RULE};">'
+        f'<div class="card-sources" style="margin-top:24px;padding-top:14px;border-top:1px solid {RULE};">'
         f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:8px;">Sources</div>'
         f'<ul style="margin:0;padding-left:18px;color:{INK};">{"".join(rows)}</ul>'
         f"</div>"
@@ -198,7 +198,7 @@ def _render_news_item(item: dict[str, Any]) -> str:
             f'style="display:block;width:100%;max-height:520px;object-fit:cover;'
             f'border-radius:6px;margin:6px 0 12px;border:1px solid {RULE};" '
             f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">'
-            f'<div style="{fallback_style}">'
+            f'<div class="img-fallback" style="{fallback_style}">'
             f'Image unavailable due to source restrictions. '
             + (f'<a href="{_esc(lead_url)}" target="_blank" rel="noopener" '
                f'style="color:{NAVY};font-weight:bold;">View at {lead_name}</a>'
@@ -223,32 +223,32 @@ def _render_news_item(item: dict[str, Any]) -> str:
     if lead_name:
         if lead_url:
             lead_block = (
-                f'<div style="font-size:13px;color:{MUTED};margin-bottom:14px;">Lead source: '
+                f'<div class="lead-source" style="font-size:13px;color:{MUTED};margin-bottom:14px;">Lead source: '
                 f'<a href="{_esc(lead_url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{lead_name}</a></div>'
             )
         else:
-            lead_block = f'<div style="font-size:13px;color:{MUTED};margin-bottom:14px;">Lead source: {lead_name}</div>'
+            lead_block = f'<div class="lead-source" style="font-size:13px;color:{MUTED};margin-bottom:14px;">Lead source: {lead_name}</div>'
 
     return f"""
-    <article style="margin:0 0 32px 0;padding:0 0 32px 0;border-bottom:1px solid {RULE};">
+    <article class="news-article" style="margin:0 0 32px 0;padding:0 0 32px 0;border-bottom:1px solid {RULE};">
       <h2 style="font-family:'Georgia','Times New Roman',serif;font-size:30px;line-height:1.25;color:{NAVY};margin:0 0 10px 0;">{title}</h2>
       {lead_block}
       {img_block}
       {video_block}
       {_render_visual_aid(item.get("visual_aid") or {})}
-      <div style="background:#f6f8fc;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
+      <div class="card-summary" style="background:#f6f8fc;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
         <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">News Summary</div>
         <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.6;">
           {_render_summary(item.get("summary_bullets") or [])}
         </ul>
       </div>
-      <div style="background:#fff8eb;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
+      <div class="card-angles" style="background:#fff8eb;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
         <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Different Reporting Angles</div>
         <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.55;">
           {_render_angles(item.get("reporting_angles") or [])}
         </ul>
       </div>
-      <div style="background:#f3f8f1;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
+      <div class="card-persp" style="background:#f3f8f1;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
         <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Diverse Stakeholder Perspectives</div>
         <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.55;">
           {_render_perspectives(item.get("perspectives") or [])}
@@ -267,6 +267,54 @@ def _outlet_from_url(url: str) -> str:
         return host.split("/")[0]
     except Exception:
         return "source"
+
+
+def _render_left_panel(quote_of_day: dict, market_numbers: list) -> str:
+    parts = []
+
+    if quote_of_day and quote_of_day.get("quote"):
+        quote = _esc(quote_of_day.get("quote", ""))
+        speaker = _esc(quote_of_day.get("speaker", ""))
+        source = _esc(quote_of_day.get("source", ""))
+        attribution = f"— {speaker}" + (f", {source}" if source else "")
+        parts.append(
+            f'<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(201,162,74,0.25);">'
+            f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:7px;">Quote of the Day</div>'
+            f'<div style="font-size:13px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
+            + (f'<div style="margin-top:5px;font-size:11px;color:#8a8070;letter-spacing:0.3px;">{_esc(attribution)}</div>' if speaker else "")
+            + '</div>'
+        )
+
+    if market_numbers:
+        rows = []
+        for m in market_numbers:
+            label = _esc(m.get("label", ""))
+            value = _esc(m.get("value", ""))
+            change = m.get("change", "")
+            if change.startswith("+"):
+                c_color = "#4ade80"
+            elif change.startswith("-"):
+                c_color = "#f87171"
+            else:
+                c_color = "#a89f87"
+            rows.append(
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
+                f'padding:4px 0;border-bottom:1px solid rgba(201,162,74,0.10);">'
+                f'<span style="font-size:12px;color:#c8bfa8;">{label}</span>'
+                f'<span style="font-size:12px;font-weight:bold;color:#f1ecdf;">{value}'
+                f'&nbsp;<span style="color:{c_color};font-size:11px;">{_esc(change)}</span></span>'
+                f'</div>'
+            )
+        parts.append(
+            f'<div>'
+            f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:7px;">Markets Today</div>'
+            + "".join(rows)
+            + '</div>'
+        )
+
+    if not parts:
+        return '<div style="color:#8a8070;font-size:13px;font-style:italic;">Data unavailable.</div>'
+    return "".join(parts)
 
 
 def _render_preview(items: list[dict[str, Any]]) -> str:
@@ -311,7 +359,7 @@ def _render_edition_index(items: list[dict[str, Any]]) -> str:
     return "\n".join(rows)
 
 
-def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
+def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta: dict | None = None) -> str:
     aest = pytz.timezone("Australia/Brisbane")
     hkt = pytz.timezone("Asia/Hong_Kong")
     now_aest = datetime.now(aest)
@@ -349,7 +397,11 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
         f' &nbsp;·&nbsp; <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("condition","-"))}</span>'
     )
 
-    preview_block = _render_preview(ordered)
+    _meta = brief_meta or {}
+    left_panel = _render_left_panel(
+        _meta.get("quote_of_day") or {},
+        _meta.get("market_numbers") or [],
+    )
 
     # Big date: "27 April 2026, Monday"
     big_date = f"{now_aest.day} {now_aest.strftime('%B %Y, %A')}"
@@ -423,16 +475,56 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
     .body, .hdr {{ padding: 20px 16px; }}
     .hdr-strip {{ flex-direction:column; align-items:flex-start; gap:8px; }}
   }}
+  /* ── Dark mode ──────────────────────────────────────────────── */
+  body.dark {{ background:#08111c; }}
+  body.dark .wrap {{ background:#0d1b2a; }}
+  body.dark .tabs {{ background:#08111c; border-color:#1a2e44; }}
+  body.dark .tab {{ background:#0d1b2a; color:#b8b0a0; border-right-color:#1a2e44; }}
+  body.dark .tab:hover {{ background:#162436; }}
+  body.dark .tab.active {{ background:#0d1b2a; color:{GOLD}; border-bottom-color:{GOLD}; }}
+  body.dark .body {{ background:#0d1b2a; color:#d8d0c0; }}
+  body.dark .news-article {{ border-bottom-color:#1a2e44 !important; color:#d8d0c0; }}
+  body.dark .news-article h2 {{ color:#c9b590 !important; }}
+  body.dark .lead-source {{ color:#8a9bb0 !important; }}
+  body.dark .lead-source a {{ color:#7ab3d4 !important; border-bottom-color:#4a7a9a !important; }}
+  body.dark .card-summary {{ background:#0a1e32 !important; border-color:#1a2e44 !important; color:#d0c8b5 !important; }}
+  body.dark .card-angles  {{ background:#1a1400 !important; border-color:#302800 !important; color:#d0c8b5 !important; }}
+  body.dark .card-persp   {{ background:#0a1a0f !important; border-color:#1a3020 !important; color:#d0c8b5 !important; }}
+  body.dark .card-visual  {{ background:#141000 !important; border-color:#302800 !important; color:#d0c8b5 !important; }}
+  body.dark .card-sources {{ border-top-color:#1a2e44 !important; color:#d0c8b5 !important; }}
+  body.dark .card-summary > div:first-child,
+  body.dark .card-angles  > div:first-child,
+  body.dark .card-persp   > div:first-child,
+  body.dark .card-visual  > div:first-child,
+  body.dark .card-sources > div:first-child {{ color:#a89f87 !important; }}
+  body.dark .card-summary li, body.dark .card-angles li, body.dark .card-persp li {{ color:#d0c8b5 !important; }}
+  body.dark .card-summary div, body.dark .card-angles div, body.dark .card-persp div {{ color:#d0c8b5 !important; }}
+  body.dark .card-summary strong, body.dark .card-angles strong, body.dark .card-persp strong {{ color:#c9b590 !important; }}
+  body.dark .card-summary span, body.dark .card-angles span, body.dark .card-persp span {{ color:#8a9bb0 !important; }}
+  body.dark .card-summary a, body.dark .card-angles a, body.dark .card-persp a,
+  body.dark .card-sources a, body.dark .card-visual a {{ color:#7ab3d4 !important; border-bottom-color:#4a7a9a !important; }}
+  body.dark .card-visual div {{ color:#d0c8b5 !important; }}
+  body.dark .card-visual td, body.dark .card-visual th {{ color:#d0c8b5 !important; background:#1a1400 !important; border-color:#302800 !important; }}
+  body.dark .img-fallback {{ background:#162030 !important; border-color:#1a2e44 !important; color:#8a9bb0 !important; }}
+  body.dark .body .section-cat {{ color:#a89f87 !important; }}
+  .dark-btn {{ background:rgba(255,255,255,0.08); border:1px solid rgba(201,162,74,0.3);
+              border-radius:30px; padding:7px 16px; color:{GOLD}; font-size:12px;
+              cursor:pointer; letter-spacing:1px; white-space:nowrap; font-family:inherit; }}
+  .dark-btn:hover {{ background:rgba(255,255,255,0.14); }}
 </style>
 </head>
 <body>
+<script>if(localStorage.getItem('dnb-dark')==='1')document.body.classList.add('dark');</script>
 <div class="wrap">
   <header class="hdr">
 
-    <!-- Top strip: weather pill (left) + edition pill (right) -->
+    <!-- Top strip: weather pill (left) + dark toggle + edition pill (right) -->
     <div class="hdr-strip">
       <div class="pill">{weather_pill}</div>
-      <div class="pill-edition">Edition &nbsp;{edition}</div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="dark-btn" id="dark-btn" onclick="toggleDark()">&#9790; Dark</button>
+        <div class="pill-edition">Edition &nbsp;{edition}</div>
+      </div>
     </div>
 
     <!-- Decorative watermark -->
@@ -446,11 +538,10 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
       <div class="compiled">{compiled_aut} AUT &nbsp;·&nbsp; {compiled_hkt} HKT</div>
       <div class="hdr-bottom">
         <div class="preview">
-          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:12px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">At a Glance</div>
-          {preview_block}
+          {left_panel}
         </div>
         <div class="edition-index">
-          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">In This Edition</div>
+          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">At a Glance</div>
           {_render_edition_index(ordered)}
         </div>
       </div>
@@ -481,6 +572,24 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
     document.getElementById(name).classList.add('active');
     evt.currentTarget.classList.add('active');
   }}
+  function toggleDark() {{
+    var body = document.body;
+    var btn  = document.getElementById('dark-btn');
+    if (body.classList.contains('dark')) {{
+      body.classList.remove('dark');
+      btn.innerHTML = '&#9790; Dark';
+      localStorage.setItem('dnb-dark', '0');
+    }} else {{
+      body.classList.add('dark');
+      btn.innerHTML = '&#9728; Light';
+      localStorage.setItem('dnb-dark', '1');
+    }}
+  }}
+  // Sync button label on load
+  (function() {{
+    var btn = document.getElementById('dark-btn');
+    if (btn && document.body.classList.contains('dark')) btn.innerHTML = '&#9728; Light';
+  }})();
 </script>
 </body>
 </html>"""
