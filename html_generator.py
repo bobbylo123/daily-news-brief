@@ -129,14 +129,17 @@ def _render_visual_aid(va: dict[str, Any]) -> str:
         return ""
     title = _esc(va.get("title", "Visual Analysis"))
     inner = va.get("html", "") or ""
-    # We trust model-supplied HTML but strip script tags defensively.
-    inner = inner.replace("<script", "&lt;script").replace("</script", "&lt;/script")
+    # Strip anything that could escape the sandbox: scripts, iframes, style tags, event attrs.
+    for tag in ("<script", "</script", "<iframe", "</iframe", "<style", "</style", "<link"):
+        inner = inner.replace(tag, f"&lt;{tag[1:]}")
+    import re as _re
+    inner = _re.sub(r'\bon\w+\s*=', '', inner, flags=_re.IGNORECASE)
     return (
         f'<div class="card-visual" style="background:#fbf7ec;border:1px solid {RULE};border-left:4px solid {GOLD};'
-        f'padding:18px 20px;border-radius:6px;margin:18px 0;">'
+        f'padding:18px 20px;border-radius:6px;margin:18px 0;overflow:hidden;">'
         f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">'
         f"Visual Analysis -- {title}</div>"
-        f'<div style="color:{INK};font-size:14px;line-height:1.55;">{inner}</div>'
+        f'<div style="color:{INK};font-size:14px;line-height:1.55;overflow:hidden;">{inner}</div>'
         f"</div>"
     )
 
