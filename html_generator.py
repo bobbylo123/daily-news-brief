@@ -1,0 +1,413 @@
+"""HTML renderer for the Daily News Brief.
+
+Consumes the structured news-item dicts produced by news_generator.fetch_daily_news
+and the weather dict from weather_fetcher.WeatherFetcher.get_brisbane_weather.
+
+Color palette: dark navy (#0b1d3a), gold (#c9a24a), black (#0a0a0a) on the
+header/footer; main body is white. Designed to render well both as a standalone
+HTML file and (best-effort) as inline email body.
+"""
+from __future__ import annotations
+
+import html as html_lib
+from datetime import datetime
+from typing import Any
+
+import pytz
+
+NAVY = "#0b1d3a"
+GOLD = "#c9a24a"
+GOLD_SOFT = "#e6cf8a"
+BLACK = "#0a0a0a"
+INK = "#1c1c1c"
+PAPER = "#ffffff"
+MUTED = "#5b6577"
+RULE = "#e8e2d0"
+
+CATEGORY_ORDER = ["Global", "Business & Markets", "Hong Kong"]
+CATEGORY_TAB_IDS = {
+    "Global": "global",
+    "Business & Markets": "business",
+    "Hong Kong": "hongkong",
+}
+
+MOTTOS = [
+    "Read widely, think clearly, act decisively.",
+    "An informed mind is the first asset of a free life.",
+    "Knowledge compounds when read with attention.",
+    "What you understand today shapes what you choose tomorrow.",
+    "Curiosity is the quiet engine of growth.",
+    "Read for facts, weigh for fairness, decide with care.",
+    "The world rewards those who read between the lines.",
+    "Stay informed, stay curious, stay deliberate.",
+    "Today’s headlines are tomorrow’s history — read them well.",
+    "Sharpen the mind each morning; the day will follow.",
+]
+
+
+def _esc(s: Any) -> str:
+    return html_lib.escape("" if s is None else str(s))
+
+
+def _motto_for(date: datetime) -> str:
+    return MOTTOS[date.timetuple().tm_yday % len(MOTTOS)]
+
+
+def _short_title(s: str, n: int = 110) -> str:
+    s = (s or "").strip()
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+
+
+def _render_summary(bullets: list[dict[str, Any]]) -> str:
+    if not bullets:
+        return "<li><em>No summary points returned.</em></li>"
+    items = []
+    for b in bullets:
+        text = _esc(b.get("text", ""))
+        outlet = _esc(b.get("source", ""))
+        url = b.get("url", "") or ""
+        cite = (
+            f' <span style="color:{MUTED};font-size:13px;">'
+            f'— <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a></span>'
+            if outlet and url
+            else f' <span style="color:{MUTED};font-size:13px;">— {outlet}</span>' if outlet else ""
+        )
+        items.append(f"<li style=\"margin:0 0 10px 0;\">{text}{cite}</li>")
+    return "\n".join(items)
+
+
+def _render_angles(angles: list[dict[str, Any]]) -> str:
+    if not angles:
+        return "<li><em>No angles returned.</em></li>"
+    items = []
+    for a in angles:
+        label = _esc(a.get("angle", "Angle"))
+        outlet = _esc(a.get("outlet", ""))
+        summary = _esc(a.get("summary", ""))
+        url = a.get("url", "") or ""
+        cite = (
+            f' <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a>'
+            if outlet and url
+            else (f" <span style=\"color:{MUTED};\">{outlet}</span>" if outlet else "")
+        )
+        items.append(
+            f'<li style="margin:0 0 12px 0;">'
+            f'<strong style="color:{NAVY};">{label}</strong>{(" — " + cite) if cite else ""}'
+            f'<div style="color:{INK};margin-top:4px;">{summary}</div>'
+            f"</li>"
+        )
+    return "\n".join(items)
+
+
+def _render_perspectives(persp: list[dict[str, Any]]) -> str:
+    if not persp:
+        return "<li><em>No perspectives returned.</em></li>"
+    items = []
+    for p in persp:
+        who = _esc(p.get("stakeholder", "Stakeholder"))
+        stance = _esc(p.get("stance", ""))
+        quote = _esc(p.get("quote_or_paraphrase", ""))
+        outlet = _esc(p.get("source", ""))
+        url = p.get("url", "") or ""
+        cite = (
+            f' <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a>'
+            if outlet and url
+            else (f" <span style=\"color:{MUTED};\">{outlet}</span>" if outlet else "")
+        )
+        items.append(
+            f'<li style="margin:0 0 14px 0;">'
+            f'<strong style="color:{NAVY};">{who}:</strong> '
+            f'<span style="color:{INK};">{stance}</span>'
+            f'<div style="margin-top:4px;color:{INK};font-style:italic;">“{quote}”{(" — " + cite) if cite else ""}</div>'
+            f"</li>"
+        )
+    return "\n".join(items)
+
+
+def _render_visual_aid(va: dict[str, Any]) -> str:
+    if not va:
+        return ""
+    title = _esc(va.get("title", "Visual Analysis"))
+    inner = va.get("html", "") or ""
+    # We trust model-supplied HTML but strip script tags defensively.
+    inner = inner.replace("<script", "&lt;script").replace("</script", "&lt;/script")
+    return (
+        f'<div style="background:#fbf7ec;border:1px solid {RULE};border-left:4px solid {GOLD};'
+        f'padding:18px 20px;border-radius:6px;margin:18px 0;">'
+        f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">'
+        f"Visual Analysis — {title}</div>"
+        f'<div style="color:{INK};font-size:14px;line-height:1.55;">{inner}</div>'
+        f"</div>"
+    )
+
+
+def _render_sources_list(item: dict[str, Any]) -> str:
+    """Compile a deduped list of every source URL in the news item."""
+    seen = set()
+    rows = []
+    def add(name, url):
+        key = (url or "").strip()
+        if not key or key in seen:
+            return
+        seen.add(key)
+        rows.append(
+            f'<li style="margin:0 0 6px 0;font-size:13px;">'
+            f'<a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{_esc(name or url)}</a>'
+            f"</li>"
+        )
+
+    lead = item.get("lead_source") or {}
+    add(lead.get("name", ""), lead.get("url", ""))
+    for b in item.get("summary_bullets", []) or []:
+        add(b.get("source", ""), b.get("url", ""))
+    for a in item.get("reporting_angles", []) or []:
+        add(a.get("outlet", ""), a.get("url", ""))
+    for p in item.get("perspectives", []) or []:
+        add(p.get("source", ""), p.get("url", ""))
+    if item.get("video_url"):
+        add("Video report", item.get("video_url"))
+
+    if not rows:
+        return ""
+    return (
+        f'<div style="margin-top:24px;padding-top:14px;border-top:1px solid {RULE};">'
+        f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:8px;">Sources</div>'
+        f'<ul style="margin:0;padding-left:18px;color:{INK};">{"".join(rows)}</ul>'
+        f"</div>"
+    )
+
+
+def _render_news_item(item: dict[str, Any]) -> str:
+    title = _esc(item.get("title", "Untitled"))
+    img_url = item.get("image_url") or ""
+    video = item.get("video_url") or ""
+    lead = item.get("lead_source") or {}
+    lead_name = _esc(lead.get("name", ""))
+    lead_url = lead.get("url", "") or ""
+
+    img_block = ""
+    if img_url:
+        img_block = (
+            f'<img src="{_esc(img_url)}" alt="{title}" '
+            f'style="display:block;width:100%;max-height:520px;object-fit:cover;'
+            f"border-radius:6px;margin:6px 0 12px;border:1px solid {RULE};\">"
+        )
+
+    video_block = ""
+    if video:
+        video_block = (
+            f'<a href="{_esc(video)}" '
+            f'style="display:inline-block;background:{NAVY};color:{GOLD_SOFT};'
+            f'padding:9px 16px;border-radius:4px;text-decoration:none;font-size:13px;'
+            f'letter-spacing:1px;text-transform:uppercase;font-weight:bold;margin:4px 0 22px;">'
+            f"▶ Watch report on {_esc(_outlet_from_url(video))}</a>"
+        )
+
+    lead_block = ""
+    if lead_name:
+        if lead_url:
+            lead_block = (
+                f'<div style="font-size:13px;color:{MUTED};margin-bottom:14px;">Lead source: '
+                f'<a href="{_esc(lead_url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{lead_name}</a></div>'
+            )
+        else:
+            lead_block = f'<div style="font-size:13px;color:{MUTED};margin-bottom:14px;">Lead source: {lead_name}</div>'
+
+    return f"""
+    <article style="margin:0 0 32px 0;padding:0 0 32px 0;border-bottom:1px solid {RULE};">
+      <h2 style="font-family:'Georgia','Times New Roman',serif;font-size:30px;line-height:1.25;color:{NAVY};margin:0 0 10px 0;">{title}</h2>
+      {lead_block}
+      {img_block}
+      {video_block}
+      {_render_visual_aid(item.get("visual_aid") or {})}
+      <div style="background:#f6f8fc;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">News Summary</div>
+        <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.6;">
+          {_render_summary(item.get("summary_bullets") or [])}
+        </ul>
+      </div>
+      <div style="background:#fff8eb;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Different Reporting Angles</div>
+        <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.55;">
+          {_render_angles(item.get("reporting_angles") or [])}
+        </ul>
+      </div>
+      <div style="background:#f3f8f1;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Diverse Stakeholder Perspectives</div>
+        <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.55;">
+          {_render_perspectives(item.get("perspectives") or [])}
+        </ul>
+      </div>
+      {_render_sources_list(item)}
+    </article>
+    """
+
+
+def _outlet_from_url(url: str) -> str:
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(url).hostname or ""
+        host = host.replace("www.", "")
+        return host.split("/")[0]
+    except Exception:
+        return "source"
+
+
+def _render_preview(items: list[dict[str, Any]]) -> str:
+    rows = []
+    for it in items:
+        cat = _esc(it.get("category", ""))
+        title = _esc(_short_title(it.get("title", ""), 105))
+        rows.append(
+            f'<div style="margin:0 0 8px 0;padding:0 0 8px 0;border-bottom:1px solid rgba(201,162,74,0.25);">'
+            f'<div style="font-size:11px;letter-spacing:2px;color:{GOLD};">{cat}</div>'
+            f'<div style="font-size:13px;color:#f1ecdf;line-height:1.45;">{title}</div>'
+            f"</div>"
+        )
+    if rows:
+        rows[-1] = rows[-1].replace(f"border-bottom:1px solid rgba(201,162,74,0.25);", "")
+    return "\n".join(rows)
+
+
+def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
+    aest = pytz.timezone("Australia/Brisbane")
+    hkt = pytz.timezone("Asia/Hong_Kong")
+    now_aest = datetime.now(aest)
+    now_hkt = datetime.now(hkt)
+
+    edition = f"{now_aest.year}.{now_aest.month}.{now_aest.day}"
+    long_date = f"{now_aest.day} {now_aest.strftime('%B %Y, %A, %H:%M')}"
+    compiled_aut = now_aest.strftime("%H:%M")
+    compiled_hkt = now_hkt.strftime("%H:%M")
+    motto = _motto_for(now_aest)
+
+    items_by_cat = {it.get("category"): it for it in items}
+    ordered = [items_by_cat.get(c, {"category": c, "title": "(no story)"}) for c in CATEGORY_ORDER]
+
+    sections = []
+    for i, it in enumerate(ordered):
+        cat = it.get("category", "")
+        tab_id = CATEGORY_TAB_IDS.get(cat, f"section-{i}")
+        active = " active" if i == 0 else ""
+        sections.append(
+            f'<section id="{tab_id}" class="news-section{active}" data-category="{_esc(cat)}">'
+            f'<div style="font-size:12px;letter-spacing:3px;text-transform:uppercase;color:{GOLD};margin-bottom:12px;font-weight:bold;">{_esc(cat)}</div>'
+            f"{_render_news_item(it)}"
+            f"</section>"
+        )
+
+    weather_block = (
+        f'<div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:{GOLD};margin-bottom:10px;">Brisbane Weather</div>'
+        f'<div style="font-size:13px;line-height:1.7;color:#f1ecdf;">'
+        f'Temp: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("temperature","-"))}°C</span><br>'
+        f'Humidity: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("humidity","-"))}%</span><br>'
+        f'Wind: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("wind_speed","-"))} km/h</span><br>'
+        f'UV Index: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("uv_index","-"))}</span><br>'
+        f'Rain: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("rain_probability","-"))}%</span><br>'
+        f'Sky: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("condition","-"))}</span>'
+        f"</div>"
+    )
+
+    preview_block = _render_preview(ordered)
+
+    titles_list = (
+        f'<div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:{GOLD};margin-top:14px;">In this edition</div>'
+        f'<div style="font-size:12px;line-height:1.7;color:#f1ecdf;margin-top:6px;">'
+        + "<br>".join(_esc(_short_title(it.get("title", ""), 80)) for it in ordered)
+        + "</div>"
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Daily News Brief — Edition {edition}</title>
+<style>
+  body {{ margin:0; padding:0; background:#f3efe7; color:{INK};
+         font-family: 'Georgia','Times New Roman',serif; }}
+  .wrap {{ max-width: 1080px; margin: 0 auto; background:{PAPER}; }}
+  .hdr  {{ background: linear-gradient(135deg, {BLACK} 0%, {NAVY} 60%, #122a52 100%);
+          color:#f1ecdf; padding: 36px 40px; }}
+  .hdr-grid {{ display:grid; grid-template-columns: 1fr 2fr 1fr; gap:30px; align-items:start; }}
+  .hdr-card {{ background: rgba(255,255,255,0.05); border:1px solid rgba(201,162,74,0.35);
+              padding:18px 20px; border-radius:6px; }}
+  .title-block {{ text-align:center; }}
+  .brand {{ font-family:'Georgia',serif; font-size:46px; letter-spacing:4px; color:{GOLD};
+           margin:0; text-shadow: 0 1px 0 rgba(0,0,0,0.4); }}
+  .motto {{ color:#e6dfc7; font-style:italic; font-size:15px; margin:10px 0 16px 0; }}
+  .preview {{ background: rgba(255,255,255,0.05); border-left:3px solid {GOLD};
+             padding:14px 16px; border-radius:4px; text-align:left; }}
+  .edition-label {{ font-size:11px; letter-spacing:3px; color:{GOLD}; text-transform:uppercase; }}
+  .edition-num {{ font-size:24px; color:{GOLD}; font-weight:bold; margin: 4px 0 14px 0; letter-spacing:1px; }}
+  .date-card {{ background: rgba(255,255,255,0.05); border-right:3px solid {GOLD};
+               padding:14px 16px; border-radius:4px; text-align:right; color:#f1ecdf; }}
+  .tabs {{ position: sticky; top:0; z-index:50; display:flex; background:#f7f3ea;
+          border-top:2px solid {NAVY}; border-bottom:2px solid {NAVY}; }}
+  .tab  {{ flex:1; padding:16px; text-align:center; font-family:'Georgia',serif;
+          font-size:14px; letter-spacing:3px; text-transform:uppercase; color:{BLACK};
+          background:#efe9d9; cursor:pointer; border:0; border-right:1px solid {RULE}; }}
+  .tab:last-child {{ border-right: 0; }}
+  .tab:hover {{ background:#e8e0c8; }}
+  .tab.active {{ background:{PAPER}; color:{NAVY}; border-bottom:3px solid {GOLD}; }}
+  .body {{ background:{PAPER}; padding:36px 40px; }}
+  .news-section {{ display:none; }}
+  .news-section.active {{ display:block; }}
+  .ftr {{ background:{NAVY}; color:#e6dfc7; text-align:center; padding:24px 20px;
+         font-size:13px; letter-spacing:1.5px; }}
+  @media (max-width: 720px) {{
+    .hdr-grid {{ grid-template-columns: 1fr; }}
+    .brand {{ font-size:34px; }}
+    .body, .hdr {{ padding: 24px 18px; }}
+  }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hdr">
+    <div class="hdr-grid">
+      <div class="hdr-card">{weather_block}</div>
+      <div class="title-block">
+        <h1 class="brand">Daily News Brief</h1>
+        <div class="motto">{_esc(motto)}</div>
+        <div class="preview">
+          <div style="font-size:11px;letter-spacing:3px;color:{GOLD};font-weight:bold;margin-bottom:8px;">Today’s Top Stories</div>
+          {preview_block}
+        </div>
+      </div>
+      <div class="date-card">
+        <div class="edition-label">Edition</div>
+        <div class="edition-num">{edition}</div>
+        <div style="font-size:13px;line-height:1.6;">{_esc(long_date)} AUT<br>
+        <span style="color:#cdc6ad;font-size:12px;">Compiled {compiled_aut} AUT · {compiled_hkt} HKT</span></div>
+        {titles_list}
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-target="global"   onclick="dnbSwitch(event,'global')">Global</button>
+    <button class="tab"        data-target="business" onclick="dnbSwitch(event,'business')">Business &amp; Markets</button>
+    <button class="tab"        data-target="hongkong" onclick="dnbSwitch(event,'hongkong')">Hong Kong</button>
+  </nav>
+
+  <main class="body">
+    {''.join(sections)}
+  </main>
+
+  <footer class="ftr">
+    Daily News Brief · {now_aest.strftime('%d %B %Y')} · Compiled {compiled_aut} AUT | {compiled_hkt} HKT · For private use only
+  </footer>
+</div>
+<script>
+  function dnbSwitch(evt, name) {{
+    var sections = document.getElementsByClassName('news-section');
+    for (var i=0; i<sections.length; i++) sections[i].classList.remove('active');
+    var tabs = document.getElementsByClassName('tab');
+    for (var j=0; j<tabs.length; j++) tabs[j].classList.remove('active');
+    document.getElementById(name).classList.add('active');
+    evt.currentTarget.classList.add('active');
+  }}
+</script>
+</body>
+</html>"""
