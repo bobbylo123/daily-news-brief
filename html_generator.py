@@ -174,10 +174,10 @@ def _render_perspectives(persp: list[dict[str, Any]]) -> str:
         rows.append(
             f'<tr style="background:{bg};">'
             f'<td style="{td_base}color:{NAVY};font-weight:bold;">{who}</td>'
-            f'<td style="{td_base}">'
+            f'<td style="{td_base}overflow:hidden;">'
             f'<span style="display:inline-block;padding:3px 9px;border-radius:3px;'
             f'background:rgba(201,162,74,0.13);color:{GOLD};font-size:11px;'
-            f'letter-spacing:0.5px;font-weight:bold;white-space:nowrap;">'
+            f'letter-spacing:0.5px;font-weight:bold;white-space:normal;max-width:100%;">'
             f'{stance[:30] + ("…" if len(stance) > 30 else "")}</span></td>'
             f'<td style="{td_base}color:{INK};font-style:italic;">&ldquo;{quote}&rdquo;{cite}</td>'
             f'</tr>'
