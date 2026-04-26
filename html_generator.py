@@ -308,7 +308,7 @@ def _render_left_panel(quote_of_day: dict, market_numbers: list) -> str:
         source = _esc(quote_of_day.get("source", ""))
         attribution = f"— {speaker}" + (f", {source}" if source else "")
         parts.append(
-            f'<div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid rgba(201,162,74,0.25);">'
+            f'<div style="margin-bottom:14px;padding-bottom:12px;">'
             f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:7px;">Quote of the Day</div>'
             f'<div style="font-size:13px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
             + (f'<div style="margin-top:5px;font-size:11px;color:#8a8070;letter-spacing:0.3px;">{_esc(attribution)}</div>' if speaker else "")
