@@ -273,15 +273,15 @@ def _render_preview(items: list[dict[str, Any]]) -> str:
     rows = []
     for it in items:
         cat = _esc(it.get("category", ""))
-        title = _esc(_short_title(it.get("title", ""), 105))
+        title = _esc(it.get("title", ""))
         rows.append(
-            f'<div style="margin:0 0 8px 0;padding:0 0 8px 0;border-bottom:1px solid rgba(201,162,74,0.25);">'
-            f'<div style="font-size:11px;letter-spacing:2px;color:{GOLD};">{cat}</div>'
-            f'<div style="font-size:13px;color:#f1ecdf;line-height:1.45;">{title}</div>'
+            f'<div style="margin:0 0 10px 0;padding:0 0 10px 0;border-bottom:1px solid rgba(201,162,74,0.22);">'
+            f'<div style="font-size:10px;letter-spacing:2px;color:{GOLD};text-transform:uppercase;margin-bottom:3px;">{cat}</div>'
+            f'<div style="font-size:13px;color:#f1ecdf;line-height:1.5;">{title}</div>'
             f"</div>"
         )
     if rows:
-        rows[-1] = rows[-1].replace("border-bottom:1px solid rgba(201,162,74,0.25);", "")
+        rows[-1] = rows[-1].replace("border-bottom:1px solid rgba(201,162,74,0.22);", "")
     return "\n".join(rows)
 
 
@@ -294,7 +294,7 @@ def _render_edition_index(items: list[dict[str, Any]]) -> str:
         cat = _esc((it.get("category") or "").upper())
         lead = it.get("lead_source") or {}
         source_name = _esc(lead.get("name", ""))
-        title = _esc(_short_title(it.get("title", ""), 72))
+        title = _esc(it.get("title", ""))
         border = "border-bottom:1px solid rgba(201,162,74,0.18);" if i < len(items) - 1 else ""
         rows.append(
             f'<div style="display:flex;gap:12px;padding:10px 0;{border}">'
@@ -397,12 +397,12 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
               text-transform:uppercase; margin:0 0 26px 0; }}
   .hdr-bottom {{ display:grid; grid-template-columns:1fr 1fr; gap:20px;
                 position:relative; z-index:1; }}
-  .preview {{ background:rgba(5,15,35,0.55); border:1px solid rgba(201,162,74,0.45);
+  .preview {{ background:rgba(2,10,28,0.82); border:1px solid rgba(201,162,74,0.5);
              border-left:4px solid {GOLD}; border-radius:0 6px 6px 0;
-             padding:16px 22px; text-align:left; }}
-  .edition-index {{ background:rgba(255,255,255,0.04); border:1px solid rgba(201,162,74,0.3);
+             padding:18px 24px; text-align:left; }}
+  .edition-index {{ background:rgba(2,10,28,0.82); border:1px solid rgba(201,162,74,0.5);
                    border-right:4px solid {GOLD}; border-radius:6px 0 0 6px;
-                   padding:16px 22px; text-align:left; }}
+                   padding:18px 24px; text-align:left; }}
   .tabs {{ position: sticky; top:0; z-index:50; display:flex; background:#f7f3ea;
           border-top:2px solid {NAVY}; border-bottom:2px solid {NAVY}; }}
   .tab  {{ flex:1; padding:16px; text-align:center; font-family:'Georgia',serif;
@@ -446,7 +446,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
       <div class="compiled">{compiled_aut} AUT &nbsp;·&nbsp; {compiled_hkt} HKT</div>
       <div class="hdr-bottom">
         <div class="preview">
-          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:12px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">Today's Top Stories</div>
+          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:12px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">At a Glance</div>
           {preview_block}
         </div>
         <div class="edition-index">
