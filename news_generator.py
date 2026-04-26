@@ -68,21 +68,30 @@ For each story, gather:
          video_url empty — a missing video is far better than a broken link.
       4. Preferred channels: BBC News, Reuters, Bloomberg Television, AP Archive,
          CNN, Al Jazeera English, RTHK, SCMP.
+      5. Also fill in video_channel with the plain channel name (e.g. "BBC News",
+         "Al Jazeera English"). If video_url is empty, leave video_channel empty too.
   * 6-8 attributed summary bullets (each cites an outlet + URL).
   * 4 different reporting angles, EACH from a different outlet.
-  * 3-4 stakeholder perspectives with stance + paraphrase + outlet citation.
+  * 3-4 stakeholder perspectives. For each stance field: use 1-3 words ONLY
+    (e.g. "Hawkish", "Cautiously Optimistic", "Opposed", "Sceptical").
+    Do NOT write full sentences in the stance field.
   * One genuinely useful visual aid as inline HTML (a timeline table, a
     stakeholder comparison table, a mindmap as a nested list, a numbers
     table, etc.). Use only inline styles, no <script>, no external CSS,
     no <link> tags. Keep it under ~1500 characters.
 
-Also provide these two top-level fields:
+Also provide these three top-level fields:
   * quote_of_day: The single most striking verbatim quote from any of today's
     three stories. Include the speaker's full name and title, and the outlet.
   * market_numbers: 4-6 key stock/financial figures relevant to today's
     Business & Markets story. Typical labels: S&P 500, NASDAQ, ASX 200,
-    USD/AUD, Gold (oz), Bitcoin. For each: short label, current level as a
-    string, and today's change with sign (e.g. "+1.2%", "-0.8%", "flat").
+    USD/AUD, Gold (oz), Bitcoin. For each:
+      - label: short ticker/index name only (e.g. "S&P 500", "Gold (oz)")
+      - value: clean number only (e.g. "5,432" or "$101") — NO narrative text
+      - change: percentage with sign only (e.g. "+1.2%" or "-0.8%") — NO narrative
+  * daily_note: One sharp, analytical sentence (20-30 words) capturing the
+    overarching theme connecting today's three stories. Written as a senior
+    editor's insight, not a summary. No clichés.
 
 When the research is done, call the `submit_daily_brief` tool ONCE with all
 three stories in the order: Global, Business & Markets, Hong Kong."""
@@ -97,8 +106,12 @@ SUBMIT_TOOL = {
     ),
     "input_schema": {
         "type": "object",
-        "required": ["items", "quote_of_day", "market_numbers"],
+        "required": ["items", "quote_of_day", "market_numbers", "daily_note"],
         "properties": {
+            "daily_note": {
+                "type": "string",
+                "description": "One sharp editorial sentence (20-30 words) on today's overarching theme",
+            },
             "quote_of_day": {
                 "type": "object",
                 "required": ["quote", "speaker", "source"],
@@ -150,6 +163,7 @@ SUBMIT_TOOL = {
                         },
                         "image_url": {"type": "string"},
                         "video_url": {"type": "string"},
+                        "video_channel": {"type": "string", "description": "Plain channel name e.g. BBC News, Al Jazeera English"},
                         "summary_bullets": {
                             "type": "array",
                             "minItems": 5,
@@ -304,6 +318,7 @@ def fetch_daily_news(
 def _normalise(item: dict[str, Any]) -> dict[str, Any]:
     """Fill in any missing optional fields with safe defaults."""
     item.setdefault("image_url", "")
+    item.setdefault("video_channel", "")
     item.setdefault("summary_bullets", [])
     item.setdefault("reporting_angles", [])
     item.setdefault("perspectives", [])

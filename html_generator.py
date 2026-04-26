@@ -45,8 +45,22 @@ MOTTOS = [
 ]
 
 
+_MKT_CHANGE_RE = __import__('re').compile(r'[+\-]?\d+\.?\d*%')
+
+
 def _esc(s: Any) -> str:
     return html_lib.escape("" if s is None else str(s))
+
+
+def _clean_mkt_value(s: str) -> str:
+    s = (s or "").strip()
+    return s.split()[0] if any(c.isalpha() for c in s) else s
+
+
+def _clean_mkt_change(s: str) -> str:
+    s = (s or "").strip()
+    m = _MKT_CHANGE_RE.search(s)
+    return m.group(0) if m else (s.split()[0] if s else s)
 
 
 def _motto_for(date: datetime) -> str:
@@ -160,7 +174,11 @@ def _render_perspectives(persp: list[dict[str, Any]]) -> str:
         rows.append(
             f'<tr style="background:{bg};">'
             f'<td style="{td_base}color:{NAVY};font-weight:bold;">{who}</td>'
-            f'<td style="{td_base}color:{MUTED};font-size:13px;">{stance}</td>'
+            f'<td style="{td_base}">'
+            f'<span style="display:inline-block;padding:3px 9px;border-radius:3px;'
+            f'background:rgba(201,162,74,0.13);color:{GOLD};font-size:11px;'
+            f'letter-spacing:0.5px;font-weight:bold;white-space:nowrap;">'
+            f'{stance[:30] + ("…" if len(stance) > 30 else "")}</span></td>'
             f'<td style="{td_base}color:{INK};font-style:italic;">&ldquo;{quote}&rdquo;{cite}</td>'
             f'</tr>'
         )
@@ -195,6 +213,12 @@ _CATEGORY_GRADIENTS = {
     "Global":             "linear-gradient(135deg,#0b1d3a 0%,#162d55 50%,#0b1d3a 100%)",
     "Business & Markets": "linear-gradient(135deg,#1a1000 0%,#3a2400 50%,#1a1000 100%)",
     "Hong Kong":          "linear-gradient(135deg,#001a1a 0%,#003535 50%,#001a1a 100%)",
+}
+
+_CATEGORY_ACCENT = {
+    "Global":             "#1e6fa0",
+    "Business & Markets": "#c9a24a",
+    "Hong Kong":          "#1a8060",
 }
 
 
@@ -243,7 +267,8 @@ def _render_news_item(item: dict[str, Any], category: str = "") -> str:
 
     video_block = ""
     if video:
-        outlet = _esc(_outlet_from_url(video))
+        channel = (item.get("video_channel") or "").strip()
+        outlet = _esc(channel if channel else _outlet_from_url(video))
         video_block = (
             f'<a href="{_esc(video)}" target="_blank" rel="noopener" '
             f'style="display:inline-flex;align-items:center;gap:8px;'
@@ -319,8 +344,8 @@ def _render_left_panel(quote_of_day: dict, market_numbers: list) -> str:
         rows = []
         for m in market_numbers:
             label = _esc(m.get("label", ""))
-            value = _esc(m.get("value", ""))
-            change = m.get("change", "")
+            value = _esc(_clean_mkt_value(m.get("value", "")))
+            change = _clean_mkt_change(m.get("change", ""))
             if change.startswith("+"):
                 c_color = "#4ade80"
             elif change.startswith("-"):
@@ -400,7 +425,8 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
     long_date = f"{now_aest.day} {now_aest.strftime('%B %Y, %A, %H:%M')}"
     compiled_aut = now_aest.strftime("%H:%M")
     compiled_hkt = now_hkt.strftime("%H:%M")
-    motto = _motto_for(now_aest)
+    _meta = brief_meta or {}
+    motto = _meta.get("daily_note") or _motto_for(now_aest)
 
     items_by_cat = {it.get("category"): it for it in items}
     ordered = [items_by_cat.get(c, {"category": c, "title": "(no story)"}) for c in CATEGORY_ORDER]
@@ -411,8 +437,10 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
         tab_id = CATEGORY_TAB_IDS.get(cat, f"section-{i}")
         active = " active" if i == 0 else ""
         read_time = _read_time(it)
+        accent_color = _CATEGORY_ACCENT.get(cat, GOLD)
         sections.append(
             f'<section id="{tab_id}" class="news-section{active}" data-category="{_esc(cat)}">'
+            f'<div style="height:3px;background:{accent_color};border-radius:0 0 2px 2px;margin-bottom:20px;"></div>'
             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
             f'<div style="font-size:12px;letter-spacing:3px;text-transform:uppercase;color:{GOLD};font-weight:bold;">{_esc(cat)}</div>'
             f'<div style="font-size:11px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;">{read_time}</div>'
@@ -432,7 +460,6 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
         f' &nbsp;·&nbsp; <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("condition","-"))}</span>'
     )
 
-    _meta = brief_meta or {}
     left_panel = _render_left_panel(
         _meta.get("quote_of_day") or {},
         _meta.get("market_numbers") or [],
