@@ -60,10 +60,14 @@ For each story, gather:
       5. AFP via Getty: media.gettyimages.com/photos/... (only if publicly embeddable)
     Avoid CBS News, CNBC image CDNs, and SCMP CDN as they block hotlinking.
     If genuinely none available, leave empty.
-  * A direct video-report URL from a major news outlet's OFFICIAL YouTube channel
-    (BBC News, Reuters, Bloomberg Television, AP, CNN, Al Jazeera English, SCMP,
-    RTHK etc.). Must be a specific video (watch?v=...), not a channel homepage.
-    If genuinely none exists, leave empty.
+  * A direct video-report URL. STRICT RULES — failure to follow = leave empty:
+      1. Use web_search to find the video (e.g. search YouTube for the headline).
+      2. The URL MUST contain "watch?v=" — channel pages and playlists are forbidden.
+      3. You MUST have seen the video in a search result or web page before including it.
+         DO NOT construct or guess a URL. If you cannot find a real, confirmed URL, leave
+         video_url empty — a missing video is far better than a broken link.
+      4. Preferred channels: BBC News, Reuters, Bloomberg Television, AP Archive,
+         CNN, Al Jazeera English, RTHK, SCMP.
   * 6-8 attributed summary bullets (each cites an outlet + URL).
   * 4 different reporting angles, EACH from a different outlet.
   * 3-4 stakeholder perspectives with stance + paraphrase + outlet citation.
@@ -300,12 +304,14 @@ def fetch_daily_news(
 def _normalise(item: dict[str, Any]) -> dict[str, Any]:
     """Fill in any missing optional fields with safe defaults."""
     item.setdefault("image_url", "")
-    item.setdefault("video_url", "")
     item.setdefault("summary_bullets", [])
     item.setdefault("reporting_angles", [])
     item.setdefault("perspectives", [])
     item.setdefault("visual_aid", {"type": "table", "title": "", "html": ""})
     item.setdefault("lead_source", {"name": "", "url": ""})
+    # Only keep video URLs that are confirmed specific YouTube watch links.
+    video = item.get("video_url") or ""
+    item["video_url"] = video if "watch?v=" in video else ""
     return item
 
 
