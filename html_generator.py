@@ -454,7 +454,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
                   border-radius:30px; padding:7px 20px; font-size:12px; color:{GOLD};
                   letter-spacing:2.5px; font-weight:bold; text-transform:uppercase;
                   white-space:nowrap; }}
-  .watermark {{ position:absolute; top:50%; left:50%; transform:translate(-50%,-30%);
+  .watermark {{ position:absolute; top:68%; left:50%; transform:translate(-50%,-50%);
                font-family:'Georgia','Times New Roman',serif; font-size:170px;
                font-style:italic; font-weight:bold; white-space:nowrap;
                pointer-events:none; user-select:none; z-index:0; letter-spacing:-4px;
