@@ -200,7 +200,7 @@ def _render_news_item(item: dict[str, Any]) -> str:
             f'style="display:inline-block;background:{NAVY};color:{GOLD_SOFT};'
             f'padding:9px 16px;border-radius:4px;text-decoration:none;font-size:13px;'
             f'letter-spacing:1px;text-transform:uppercase;font-weight:bold;margin:4px 0 22px;">'
-            f"▶ Watch report on {_esc(_outlet_from_url(video))}</a>"
+            f"Watch Report on {_esc(_outlet_from_url(video))}</a>"
         )
 
     lead_block = ""
@@ -298,7 +298,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
 
     # One-line weather pill (all on one line)
     weather_pill = (
-        f'&#127746; Brisbane &nbsp;·&nbsp; '
+        f'Brisbane &nbsp;·&nbsp; '
         f'<span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("temperature","-"))}°C</span>'
         f' &nbsp;·&nbsp; Humidity <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("humidity","-"))}%</span>'
         f' &nbsp;·&nbsp; Wind <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("wind_speed","-"))} km/h</span>'
@@ -353,9 +353,10 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
               color:#f5f0e6; margin:0 0 6px 0; letter-spacing:1px; }}
   .compiled {{ font-size:13px; color:#a89f87; letter-spacing:2px;
               text-transform:uppercase; margin:0 0 26px 0; }}
-  .preview {{ background:rgba(255,255,255,0.06); border:1px solid rgba(201,162,74,0.28);
-             border-radius:8px; padding:16px 22px; text-align:left;
-             max-width:580px; margin:0 auto; }}
+  .preview {{ background:rgba(5,15,35,0.55); border:1px solid rgba(201,162,74,0.45);
+             border-left:4px solid {GOLD}; border-radius:0 6px 6px 0;
+             padding:16px 22px; text-align:left;
+             max-width:560px; margin:0 auto 0 0; }}
   .tabs {{ position: sticky; top:0; z-index:50; display:flex; background:#f7f3ea;
           border-top:2px solid {NAVY}; border-bottom:2px solid {NAVY}; }}
   .tab  {{ flex:1; padding:16px; text-align:center; font-family:'Georgia',serif;
