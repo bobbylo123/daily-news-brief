@@ -452,7 +452,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
   .preview {{ background:rgba(2,10,28,0.82); border:1px solid rgba(201,162,74,0.5);
              border-left:4px solid {GOLD}; border-radius:0 6px 6px 0;
              padding:18px 24px; text-align:left; }}
-  .edition-index {{ background:rgba(2,10,28,0.82); border:1px solid rgba(201,162,74,0.5);
+  .edition-index {{ background:rgba(2,10,28,0.62); border:1px solid rgba(201,162,74,0.5);
                    border-right:4px solid {GOLD}; border-radius:6px 0 0 6px;
                    padding:18px 24px; text-align:left; }}
   .tabs {{ position: sticky; top:0; z-index:50; display:flex; background:#f7f3ea;
