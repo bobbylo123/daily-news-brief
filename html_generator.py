@@ -578,7 +578,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
       <h1 class="brand">Daily News Brief</h1>
       <p class="motto">{_esc(motto)}</p>
       <div class="big-date">{_esc(big_date)}</div>
-      <div class="compiled">{compiled_aut} AUT &nbsp;·&nbsp; {compiled_hkt} HKT</div>
+      <div class="compiled">{compiled_aut} AEST&nbsp;·&nbsp; {compiled_hkt} HKT</div>
       <div class="hdr-bottom">
         <div class="preview">
           {left_panel}
@@ -603,7 +603,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
   </main>
 
   <footer class="ftr">
-    Daily News Brief · {now_aest.strftime('%d %B %Y')} · Compiled {compiled_aut} AUT | {compiled_hkt} HKT · For private use only
+    Daily News Brief · {now_aest.strftime('%d %B %Y')} · Compiled {compiled_aut} AEST| {compiled_hkt} HKT · For private use only
   </footer>
 </div>
 <script>
