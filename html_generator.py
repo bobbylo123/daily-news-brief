@@ -127,27 +127,48 @@ def _render_angles(angles: list[dict[str, Any]]) -> str:
 
 def _render_perspectives(persp: list[dict[str, Any]]) -> str:
     if not persp:
-        return "<li><em>No perspectives returned.</em></li>"
-    items = []
-    for p in persp:
-        who = _esc(p.get("stakeholder", "Stakeholder"))
+        return '<p style="color:#5b6577;font-style:italic;margin:0;">No perspectives returned.</p>'
+    th_style = (
+        f'text-align:left;padding:8px 12px;font-size:11px;letter-spacing:2px;'
+        f'text-transform:uppercase;color:{GOLD};font-weight:bold;'
+        f'border-bottom:2px solid rgba(201,162,74,0.4);'
+    )
+    rows = [
+        f'<colgroup><col style="width:20%;"><col style="width:18%;"><col style="width:62%;"></colgroup>'
+        f'<thead><tr>'
+        f'<th style="{th_style}">Who</th>'
+        f'<th style="{th_style}">Stance</th>'
+        f'<th style="{th_style}">What They Said</th>'
+        f'</tr></thead>'
+    ]
+    td_base = (
+        f'padding:10px 12px;font-size:13.5px;line-height:1.55;'
+        f'border-bottom:1px solid rgba(201,162,74,0.12);vertical-align:top;'
+    )
+    for i, p in enumerate(persp):
+        who    = _esc(p.get("stakeholder", ""))
         stance = _esc(p.get("stance", ""))
-        quote = _esc(p.get("quote_or_paraphrase", ""))
+        quote  = _esc(p.get("quote_or_paraphrase", ""))
         outlet = _esc(p.get("source", ""))
-        url = p.get("url", "") or ""
+        url    = p.get("url", "") or ""
         cite = (
-            f' <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a>'
-            if outlet and url
-            else (f" <span style=\"color:{MUTED};\">{outlet}</span>" if outlet else "")
+            f' <a href="{_esc(url)}" target="_blank" rel="noopener" '
+            f'style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};font-size:12px;font-style:normal;">{outlet}</a>'
+            if outlet and url else (f' <span style="color:{MUTED};font-size:12px;font-style:normal;">{outlet}</span>' if outlet else "")
         )
-        items.append(
-            f'<li style="margin:0 0 14px 0;">'
-            f'<strong style="color:{NAVY};">{who}:</strong> '
-            f'<span style="color:{INK};">{stance}</span>'
-            f'<div style="margin-top:4px;color:{INK};font-style:italic;">"{quote}"{(" -- " + cite) if cite else ""}</div>'
-            f"</li>"
+        bg = "rgba(201,162,74,0.05)" if i % 2 == 1 else "transparent"
+        rows.append(
+            f'<tr style="background:{bg};">'
+            f'<td style="{td_base}color:{NAVY};font-weight:bold;">{who}</td>'
+            f'<td style="{td_base}color:{MUTED};font-size:13px;">{stance}</td>'
+            f'<td style="{td_base}color:{INK};font-style:italic;">&ldquo;{quote}&rdquo;{cite}</td>'
+            f'</tr>'
         )
-    return "\n".join(items)
+    return (
+        f'<table style="width:100%;border-collapse:collapse;font-family:Georgia,serif;table-layout:fixed;">'
+        + "".join(rows)
+        + '</table>'
+    )
 
 
 def _render_visual_aid(va: dict[str, Any]) -> str:
@@ -170,67 +191,52 @@ def _render_visual_aid(va: dict[str, Any]) -> str:
     )
 
 
-def _render_sources_list(item: dict[str, Any]) -> str:
-    """Compile a deduped list of every source URL in the news item."""
-    seen = set()
-    rows = []
-    def add(name, url):
-        key = (url or "").strip()
-        if not key or key in seen:
-            return
-        seen.add(key)
-        rows.append(
-            f'<li style="margin:0 0 6px 0;font-size:13px;">'
-            f'<a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{_esc(name or url)}</a>'
-            f"</li>"
-        )
-
-    lead = item.get("lead_source") or {}
-    add(lead.get("name", ""), lead.get("url", ""))
-    for b in item.get("summary_bullets", []) or []:
-        add(b.get("source", ""), b.get("url", ""))
-    for a in item.get("reporting_angles", []) or []:
-        add(a.get("outlet", ""), a.get("url", ""))
-    for p in item.get("perspectives", []) or []:
-        add(p.get("source", ""), p.get("url", ""))
-    if item.get("video_url"):
-        add("Video report", item.get("video_url"))
-
-    if not rows:
-        return ""
-    return (
-        f'<div class="card-sources" style="margin-top:24px;padding-top:14px;border-top:1px solid {RULE};">'
-        f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:8px;">Sources</div>'
-        f'<ul style="margin:0;padding-left:18px;color:{INK};">{"".join(rows)}</ul>'
-        f"</div>"
-    )
+_CATEGORY_GRADIENTS = {
+    "Global":             "linear-gradient(135deg,#0b1d3a 0%,#162d55 50%,#0b1d3a 100%)",
+    "Business & Markets": "linear-gradient(135deg,#1a1000 0%,#3a2400 50%,#1a1000 100%)",
+    "Hong Kong":          "linear-gradient(135deg,#001a1a 0%,#003535 50%,#001a1a 100%)",
+}
 
 
-def _render_news_item(item: dict[str, Any]) -> str:
+def _read_time(item: dict[str, Any]) -> str:
+    words = len((item.get("title") or "").split())
+    for b in item.get("summary_bullets") or []:
+        words += len((b.get("text") or "").split())
+    for a in item.get("reporting_angles") or []:
+        words += len((a.get("summary") or "").split())
+    for p in item.get("perspectives") or []:
+        words += len((p.get("quote_or_paraphrase") or "").split())
+    return f"~{max(1, round(words / 200))} min read"
+
+
+def _render_news_item(item: dict[str, Any], category: str = "") -> str:
     title = _esc(item.get("title", "Untitled"))
     img_url = item.get("image_url") or ""
     video = item.get("video_url") or ""
     lead = item.get("lead_source") or {}
     lead_name = _esc(lead.get("name", ""))
     lead_url = lead.get("url", "") or ""
+    gradient = _CATEGORY_GRADIENTS.get(category, _CATEGORY_GRADIENTS["Global"])
 
     img_block = ""
     if img_url:
         fallback_style = (
-            f"display:none;width:100%;padding:18px 20px;margin:6px 0 12px;"
-            f"background:#f5f0e6;border:1px solid {RULE};border-radius:6px;"
-            f"font-size:13px;color:{MUTED};box-sizing:border-box;"
+            f"display:none;width:100%;min-height:160px;margin:6px 0 12px;"
+            f"background:{gradient};border-radius:6px;border:1px solid {RULE};"
+            f"display:none;align-items:center;justify-content:center;flex-direction:column;"
+            f"box-sizing:border-box;padding:24px;"
         )
         img_block = (
             f'<img id="img-{abs(hash(img_url))}" src="{_esc(img_url)}" alt="{title}" '
             f'referrerpolicy="no-referrer" crossorigin="anonymous" '
             f'style="display:block;width:100%;max-height:520px;object-fit:cover;'
             f'border-radius:6px;margin:6px 0 12px;border:1px solid {RULE};" '
-            f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'">'
+            f'onerror="this.style.display=\'none\';var fb=this.nextElementSibling;fb.style.display=\'flex\';">'
             f'<div class="img-fallback" style="{fallback_style}">'
-            f'Image unavailable due to source restrictions. '
+            f'<div style="font-size:28px;margin-bottom:10px;opacity:0.5;">&#128247;</div>'
+            f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.5);margin-bottom:8px;">Image Unavailable</div>'
             + (f'<a href="{_esc(lead_url)}" target="_blank" rel="noopener" '
-               f'style="color:{NAVY};font-weight:bold;">View at {lead_name}</a>'
+               f'style="font-size:12px;color:{GOLD};text-decoration:none;border-bottom:1px solid rgba(201,162,74,0.4);">View story at {lead_name} &rarr;</a>'
                if lead_url else "")
             + f'</div>'
         )
@@ -275,13 +281,10 @@ def _render_news_item(item: dict[str, Any]) -> str:
         <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:12px;">Different Reporting Angles</div>
         {_render_angles(item.get("reporting_angles") or [])}
       </div>
-      <div class="card-persp" style="background:#f3f8f1;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;">
-        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">Diverse Stakeholder Perspectives</div>
-        <ul style="margin:0;padding-left:20px;color:{INK};font-size:14.5px;line-height:1.55;">
-          {_render_perspectives(item.get("perspectives") or [])}
-        </ul>
+      <div class="card-persp" style="background:#f3f8f1;border:1px solid {RULE};border-radius:6px;padding:18px 20px;margin:18px 0;overflow-x:auto;">
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:12px;">Diverse Stakeholder Perspectives</div>
+        {_render_perspectives(item.get("perspectives") or [])}
       </div>
-      {_render_sources_list(item)}
     </article>
     """
 
@@ -334,6 +337,7 @@ def _render_left_panel(quote_of_day: dict, market_numbers: list) -> str:
             )
         parts.append(
             f'<div>'
+            f'<div style="border-top:1px solid rgba(201,162,74,0.4);margin:0 0 12px 0;"></div>'
             f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:7px;">Markets Today</div>'
             + "".join(rows)
             + '</div>'
@@ -406,10 +410,14 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
         cat = it.get("category", "")
         tab_id = CATEGORY_TAB_IDS.get(cat, f"section-{i}")
         active = " active" if i == 0 else ""
+        read_time = _read_time(it)
         sections.append(
             f'<section id="{tab_id}" class="news-section{active}" data-category="{_esc(cat)}">'
-            f'<div style="font-size:12px;letter-spacing:3px;text-transform:uppercase;color:{GOLD};margin-bottom:12px;font-weight:bold;">{_esc(cat)}</div>'
-            f"{_render_news_item(it)}"
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+            f'<div style="font-size:12px;letter-spacing:3px;text-transform:uppercase;color:{GOLD};font-weight:bold;">{_esc(cat)}</div>'
+            f'<div style="font-size:11px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;">{read_time}</div>'
+            f'</div>'
+            f"{_render_news_item(it, cat)}"
             f"</section>"
         )
 
@@ -519,6 +527,11 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
   body.dark .card-angles table td, body.dark .card-angles table th {{ color:#d0c8b5 !important; border-bottom-color:rgba(201,162,74,0.15) !important; }}
   body.dark .card-angles table tr {{ background:transparent !important; }}
   body.dark .card-angles table a {{ color:#7ab3d4 !important; border-bottom-color:#4a7a9a !important; }}
+  body.dark .card-persp   {{ background:#0a1a0f !important; border-color:#1a3020 !important; color:#d0c8b5 !important; }}
+  body.dark .card-persp table td, body.dark .card-persp table th {{ color:#d0c8b5 !important; border-bottom-color:rgba(201,162,74,0.15) !important; }}
+  body.dark .card-persp table tr {{ background:transparent !important; }}
+  body.dark .card-persp table a {{ color:#7ab3d4 !important; border-bottom-color:#4a7a9a !important; }}
+  body.dark .img-fallback {{ background:linear-gradient(135deg,#0b1d3a 0%,#162d55 50%,#0b1d3a 100%) !important; border-color:#1a2e44 !important; }}
   body.dark .card-persp   {{ background:#0a1a0f !important; border-color:#1a3020 !important; color:#d0c8b5 !important; }}
   body.dark .card-visual  {{ background:#141000 !important; border-color:#302800 !important; color:#d0c8b5 !important; }}
   body.dark .card-sources {{ border-top-color:#1a2e44 !important; color:#d0c8b5 !important; }}
