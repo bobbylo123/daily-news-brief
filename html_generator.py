@@ -40,7 +40,7 @@ MOTTOS = [
     "Read for facts, weigh for fairness, decide with care.",
     "The world rewards those who read between the lines.",
     "Stay informed, stay curious, stay deliberate.",
-    "Today’s headlines are tomorrow’s history — read them well.",
+    "Today's headlines are tomorrow's history -- read them well.",
     "Sharpen the mind each morning; the day will follow.",
 ]
 
@@ -55,7 +55,7 @@ def _motto_for(date: datetime) -> str:
 
 def _short_title(s: str, n: int = 110) -> str:
     s = (s or "").strip()
-    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+    return s if len(s) <= n else s[: n - 1].rstrip() + "..."
 
 
 def _render_summary(bullets: list[dict[str, Any]]) -> str:
@@ -68,9 +68,9 @@ def _render_summary(bullets: list[dict[str, Any]]) -> str:
         url = b.get("url", "") or ""
         cite = (
             f' <span style="color:{MUTED};font-size:13px;">'
-            f'— <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a></span>'
+            f'-- <a href="{_esc(url)}" style="color:{NAVY};text-decoration:none;border-bottom:1px dotted {NAVY};">{outlet}</a></span>'
             if outlet and url
-            else f' <span style="color:{MUTED};font-size:13px;">— {outlet}</span>' if outlet else ""
+            else f' <span style="color:{MUTED};font-size:13px;">-- {outlet}</span>' if outlet else ""
         )
         items.append(f"<li style=\"margin:0 0 10px 0;\">{text}{cite}</li>")
     return "\n".join(items)
@@ -92,7 +92,7 @@ def _render_angles(angles: list[dict[str, Any]]) -> str:
         )
         items.append(
             f'<li style="margin:0 0 12px 0;">'
-            f'<strong style="color:{NAVY};">{label}</strong>{(" — " + cite) if cite else ""}'
+            f'<strong style="color:{NAVY};">{label}</strong>{(" -- " + cite) if cite else ""}'
             f'<div style="color:{INK};margin-top:4px;">{summary}</div>'
             f"</li>"
         )
@@ -118,7 +118,7 @@ def _render_perspectives(persp: list[dict[str, Any]]) -> str:
             f'<li style="margin:0 0 14px 0;">'
             f'<strong style="color:{NAVY};">{who}:</strong> '
             f'<span style="color:{INK};">{stance}</span>'
-            f'<div style="margin-top:4px;color:{INK};font-style:italic;">“{quote}”{(" — " + cite) if cite else ""}</div>'
+            f'<div style="margin-top:4px;color:{INK};font-style:italic;">"{quote}"{(" -- " + cite) if cite else ""}</div>'
             f"</li>"
         )
     return "\n".join(items)
@@ -135,7 +135,7 @@ def _render_visual_aid(va: dict[str, Any]) -> str:
         f'<div style="background:#fbf7ec;border:1px solid {RULE};border-left:4px solid {GOLD};'
         f'padding:18px 20px;border-radius:6px;margin:18px 0;">'
         f'<div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:{NAVY};margin-bottom:10px;">'
-        f"Visual Analysis — {title}</div>"
+        f"Visual Analysis -- {title}</div>"
         f'<div style="color:{INK};font-size:14px;line-height:1.55;">{inner}</div>'
         f"</div>"
     )
@@ -296,52 +296,66 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
             f"</section>"
         )
 
-    weather_block = (
-        f'<div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:{GOLD};margin-bottom:10px;">Brisbane Weather</div>'
-        f'<div style="font-size:13px;line-height:1.7;color:#f1ecdf;">'
-        f'Temp: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("temperature","-"))}°C</span><br>'
-        f'Humidity: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("humidity","-"))}%</span><br>'
-        f'Wind: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("wind_speed","-"))} km/h</span><br>'
-        f'UV Index: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("uv_index","-"))}</span><br>'
-        f'Rain: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("rain_probability","-"))}%</span><br>'
-        f'Sky: <span style="color:{GOLD_SOFT};font-weight:bold;">{_esc(weather.get("condition","-"))}</span>'
-        f"</div>"
+    # One-line weather pill (all on one line)
+    weather_pill = (
+        f'&#127746; Brisbane &nbsp;·&nbsp; '
+        f'<span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("temperature","-"))}°C</span>'
+        f' &nbsp;·&nbsp; Humidity <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("humidity","-"))}%</span>'
+        f' &nbsp;·&nbsp; Wind <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("wind_speed","-"))} km/h</span>'
+        f' &nbsp;·&nbsp; UV <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("uv_index","-"))}</span>'
+        f' &nbsp;·&nbsp; Rain <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("rain_probability","-"))}%</span>'
+        f' &nbsp;·&nbsp; <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("condition","-"))}</span>'
     )
 
     preview_block = _render_preview(ordered)
 
-    titles_list = (
-        f'<div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:{GOLD};margin-top:14px;">In this edition</div>'
-        f'<div style="font-size:12px;line-height:1.7;color:#f1ecdf;margin-top:6px;">'
-        + "<br>".join(_esc(_short_title(it.get("title", ""), 80)) for it in ordered)
-        + "</div>"
-    )
+    # Big date: "27 April 2026, Monday"
+    big_date = f"{now_aest.day} {now_aest.strftime('%B %Y, %A')}"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Daily News Brief — Edition {edition}</title>
+<title>Daily News Brief -- Edition {edition}</title>
 <style>
   body {{ margin:0; padding:0; background:#f3efe7; color:{INK};
          font-family: 'Georgia','Times New Roman',serif; }}
   .wrap {{ max-width: 1080px; margin: 0 auto; background:{PAPER}; }}
-  .hdr  {{ background: linear-gradient(135deg, {BLACK} 0%, {NAVY} 60%, #122a52 100%);
-          color:#f1ecdf; padding: 36px 40px; }}
-  .hdr-grid {{ display:grid; grid-template-columns: 1fr 2fr 1fr; gap:30px; align-items:start; }}
-  .hdr-card {{ background: rgba(255,255,255,0.05); border:1px solid rgba(201,162,74,0.35);
-              padding:18px 20px; border-radius:6px; }}
-  .title-block {{ text-align:center; }}
-  .brand {{ font-family:'Georgia',serif; font-size:46px; letter-spacing:4px; color:{GOLD};
-           margin:0; text-shadow: 0 1px 0 rgba(0,0,0,0.4); }}
-  .motto {{ color:#e6dfc7; font-style:italic; font-size:15px; margin:10px 0 16px 0; }}
-  .preview {{ background: rgba(255,255,255,0.05); border-left:3px solid {GOLD};
-             padding:14px 16px; border-radius:4px; text-align:left; }}
-  .edition-label {{ font-size:11px; letter-spacing:3px; color:{GOLD}; text-transform:uppercase; }}
-  .edition-num {{ font-size:24px; color:{GOLD}; font-weight:bold; margin: 4px 0 14px 0; letter-spacing:1px; }}
-  .date-card {{ background: rgba(255,255,255,0.05); border-right:3px solid {GOLD};
-               padding:14px 16px; border-radius:4px; text-align:right; color:#f1ecdf; }}
+  .hdr  {{ background: linear-gradient(160deg, {BLACK} 0%, {NAVY} 55%, #0d2444 100%);
+          color:#f1ecdf; padding: 28px 36px 36px; position:relative; overflow:hidden; }}
+  .hdr-strip {{ display:flex; justify-content:space-between; align-items:center;
+               margin-bottom:30px; gap:12px; flex-wrap:wrap; }}
+  .pill {{ background:rgba(255,255,255,0.07); border:1px solid rgba(201,162,74,0.28);
+          border-radius:30px; padding:7px 18px; font-size:12px; color:#ddd6c0;
+          letter-spacing:0.3px; white-space:nowrap; }}
+  .pill-edition {{ background:rgba(255,255,255,0.07); border:1px solid rgba(201,162,74,0.28);
+                  border-radius:30px; padding:7px 20px; font-size:12px; color:{GOLD};
+                  letter-spacing:2.5px; font-weight:bold; text-transform:uppercase;
+                  white-space:nowrap; }}
+  .watermark {{ position:absolute; top:50%; left:50%; transform:translate(-50%,-46%);
+               font-family:'Georgia','Times New Roman',serif; font-size:170px;
+               font-style:italic; font-weight:bold; white-space:nowrap;
+               pointer-events:none; user-select:none; z-index:0; letter-spacing:-4px;
+               background:linear-gradient(135deg,
+                 rgba(201,162,74,0.22) 0%,
+                 rgba(240,210,140,0.28) 35%,
+                 rgba(210,170,100,0.18) 65%,
+                 rgba(180,130,80,0.22) 100%);
+               -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+               background-clip:text; }}
+  .hdr-center {{ text-align:center; position:relative; z-index:1; }}
+  .brand {{ font-family:'Georgia','Times New Roman',serif; font-size:78px; letter-spacing:7px;
+           color:{GOLD}; margin:0 0 10px 0; line-height:1;
+           text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 1px 0 rgba(0,0,0,0.3); }}
+  .motto {{ color:#ddd5bd; font-style:italic; font-size:15.5px; margin:0 0 20px 0; }}
+  .big-date {{ font-family:'Georgia','Times New Roman',serif; font-size:26px;
+              color:#f5f0e6; margin:0 0 6px 0; letter-spacing:1px; }}
+  .compiled {{ font-size:13px; color:#a89f87; letter-spacing:2px;
+              text-transform:uppercase; margin:0 0 26px 0; }}
+  .preview {{ background:rgba(255,255,255,0.06); border:1px solid rgba(201,162,74,0.28);
+             border-radius:8px; padding:16px 22px; text-align:left;
+             max-width:580px; margin:0 auto; }}
   .tabs {{ position: sticky; top:0; z-index:50; display:flex; background:#f7f3ea;
           border-top:2px solid {NAVY}; border-bottom:2px solid {NAVY}; }}
   .tab  {{ flex:1; padding:16px; text-align:center; font-family:'Georgia',serif;
@@ -356,33 +370,39 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]]) -> str:
   .ftr {{ background:{NAVY}; color:#e6dfc7; text-align:center; padding:24px 20px;
          font-size:13px; letter-spacing:1.5px; }}
   @media (max-width: 720px) {{
-    .hdr-grid {{ grid-template-columns: 1fr; }}
-    .brand {{ font-size:34px; }}
-    .body, .hdr {{ padding: 24px 18px; }}
+    .brand {{ font-size:46px; letter-spacing:3px; }}
+    .big-date {{ font-size:18px; }}
+    .watermark {{ font-size:100px; }}
+    .body, .hdr {{ padding: 20px 16px; }}
+    .hdr-strip {{ flex-direction:column; align-items:flex-start; gap:8px; }}
   }}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="hdr">
-    <div class="hdr-grid">
-      <div class="hdr-card">{weather_block}</div>
-      <div class="title-block">
-        <h1 class="brand">Daily News Brief</h1>
-        <div class="motto">{_esc(motto)}</div>
-        <div class="preview">
-          <div style="font-size:11px;letter-spacing:3px;color:{GOLD};font-weight:bold;margin-bottom:8px;">Today’s Top Stories</div>
-          {preview_block}
-        </div>
-      </div>
-      <div class="date-card">
-        <div class="edition-label">Edition</div>
-        <div class="edition-num">{edition}</div>
-        <div style="font-size:13px;line-height:1.6;">{_esc(long_date)} AUT<br>
-        <span style="color:#cdc6ad;font-size:12px;">Compiled {compiled_aut} AUT · {compiled_hkt} HKT</span></div>
-        {titles_list}
+
+    <!-- Top strip: weather pill (left) + edition pill (right) -->
+    <div class="hdr-strip">
+      <div class="pill">{weather_pill}</div>
+      <div class="pill-edition">Edition &nbsp;{edition}</div>
+    </div>
+
+    <!-- Decorative watermark -->
+    <div class="watermark">Daily.</div>
+
+    <!-- Main centred content -->
+    <div class="hdr-center">
+      <h1 class="brand">Daily News Brief</h1>
+      <p class="motto">{_esc(motto)}</p>
+      <div class="big-date">{_esc(big_date)}</div>
+      <div class="compiled">{compiled_aut} AUT &nbsp;·&nbsp; {compiled_hkt} HKT</div>
+      <div class="preview">
+        <div style="font-size:11px;letter-spacing:3px;color:{GOLD};font-weight:bold;margin-bottom:10px;">Today's Top Stories</div>
+        {preview_block}
       </div>
     </div>
+
   </header>
 
   <nav class="tabs">
