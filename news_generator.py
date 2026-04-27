@@ -250,21 +250,27 @@ def _debug_dir() -> Path:
 
 def fetch_daily_news(
     model: str = "claude-sonnet-4-6",
-    max_searches: int = 12,
+    max_searches: int = 8,
 ) -> list[dict[str, Any]]:
-    """Run Claude with web_search + a strict-schema submission tool."""
+    """Run Claude with web_search + a strict-schema submission tool.
+
+    Robust against transient 429 rate-limit errors via aggressive retry/backoff.
+    """
     client = _client()
     aest = pytz.timezone("Australia/Brisbane")
     now = datetime.now(aest)
     date_str = now.strftime("%A, %d %B %Y")
 
+    # Progressive backoff: total max wait ~17 minutes across 7 attempts.
+    # Long enough that even a sustained 429 burst clears before we give up.
+    backoff_schedule = [60, 90, 120, 180, 240, 300]
     last_err = None
     message = None
-    for attempt in range(4):
+    for attempt in range(len(backoff_schedule) + 1):
         try:
             message = client.messages.create(
                 model=model,
-                max_tokens=16000,
+                max_tokens=12000,
                 system=SYSTEM_PROMPT,
                 tools=[
                     {
@@ -283,10 +289,21 @@ def fetch_daily_news(
             break
         except anthropic.RateLimitError as e:
             last_err = e
-            if attempt == 3:
+            if attempt >= len(backoff_schedule):
                 raise
-            wait = 75 * (attempt + 1)
-            print(f"[news] rate-limited (429); sleeping {wait}s before retry {attempt + 2}/4…", flush=True)
+            wait = backoff_schedule[attempt]
+            print(
+                f"[news] rate-limited (429); sleeping {wait}s before retry "
+                f"{attempt + 2}/{len(backoff_schedule) + 1}…",
+                flush=True,
+            )
+            time.sleep(wait)
+        except (anthropic.APIConnectionError, anthropic.APIStatusError) as e:
+            last_err = e
+            if attempt >= len(backoff_schedule):
+                raise
+            wait = min(60, backoff_schedule[attempt])
+            print(f"[news] transient API error: {type(e).__name__}; sleeping {wait}s…", flush=True)
             time.sleep(wait)
     if message is None:
         raise last_err or RuntimeError("Failed to obtain Claude response")

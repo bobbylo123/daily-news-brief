@@ -76,21 +76,46 @@ def main() -> int:
     now_aest = datetime.now(aest)
     html_path, json_path = _archive_paths(now_aest)
 
+    def _load_cached(p: Path):
+        cached = json.loads(p.read_text())
+        if isinstance(cached, list):
+            return cached, {}
+        return cached.get("items", cached), cached
+
+    def _most_recent_archive() -> Path | None:
+        archive_dir = HERE / "archive"
+        if not archive_dir.exists():
+            return None
+        candidates = sorted(archive_dir.glob("daily-news-brief-*.json"), reverse=True)
+        for c in candidates:
+            if c != json_path:
+                return c
+        return None
+
     if args.no_fetch and json_path.exists():
         print(f"[reuse] loading cached news from {json_path}", flush=True)
-        cached = json.loads(json_path.read_text())
-        if isinstance(cached, list):
-            items, brief_meta = cached, {}
-        else:
-            items = cached.get("items", cached)
-            brief_meta = cached
+        items, brief_meta = _load_cached(json_path)
     else:
         print("[news] querying Claude API with web_search…", flush=True)
-        result = fetch_daily_news()
-        items = result["items"]
-        brief_meta = result
-        json_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
-        print(f"[news] cached → {json_path}", flush=True)
+        try:
+            result = fetch_daily_news()
+            items = result["items"]
+            brief_meta = result
+            json_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+            print(f"[news] cached → {json_path}", flush=True)
+        except Exception as fetch_err:
+            print(f"[news] FETCH FAILED after retries: {fetch_err}", flush=True)
+            fallback = _most_recent_archive()
+            if fallback is None:
+                print("[news] no fallback archive available; aborting.", flush=True)
+                raise
+            print(f"[news] FALLBACK: re-using most recent archive {fallback.name}", flush=True)
+            items, brief_meta = _load_cached(fallback)
+            brief_meta = dict(brief_meta or {})
+            brief_meta["daily_note"] = (
+                f"News fetch unavailable today; this brief re-uses {fallback.stem.split('-')[-3]}-"
+                f"{fallback.stem.split('-')[-2]}-{fallback.stem.split('-')[-1]} content."
+            )
 
     print("[weather] fetching Brisbane weather…", flush=True)
     weather = WeatherFetcher().get_brisbane_weather()
