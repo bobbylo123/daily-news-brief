@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -238,7 +239,7 @@ def _client() -> anthropic.Anthropic:
         raise RuntimeError(
             "ANTHROPIC_API_KEY is not set. Run setup.sh or export it before running."
         )
-    return anthropic.Anthropic(api_key=key)
+    return anthropic.Anthropic(api_key=key, max_retries=5)
 
 
 def _debug_dir() -> Path:
@@ -249,7 +250,7 @@ def _debug_dir() -> Path:
 
 def fetch_daily_news(
     model: str = "claude-sonnet-4-6",
-    max_searches: int = 20,
+    max_searches: int = 12,
 ) -> list[dict[str, Any]]:
     """Run Claude with web_search + a strict-schema submission tool."""
     client = _client()
@@ -257,24 +258,38 @@ def fetch_daily_news(
     now = datetime.now(aest)
     date_str = now.strftime("%A, %d %B %Y")
 
-    message = client.messages.create(
-        model=model,
-        max_tokens=16000,
-        system=SYSTEM_PROMPT,
-        tools=[
-            {
-                "type": "web_search_20250305",
-                "name": "web_search",
-                "max_uses": max_searches,
-            },
-            SUBMIT_TOOL,
-        ],
-        tool_choice={"type": "auto"},
-        messages=[{
-            "role": "user",
-            "content": USER_PROMPT_TEMPLATE.format(date_str=date_str),
-        }],
-    )
+    last_err = None
+    message = None
+    for attempt in range(4):
+        try:
+            message = client.messages.create(
+                model=model,
+                max_tokens=16000,
+                system=SYSTEM_PROMPT,
+                tools=[
+                    {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                        "max_uses": max_searches,
+                    },
+                    SUBMIT_TOOL,
+                ],
+                tool_choice={"type": "auto"},
+                messages=[{
+                    "role": "user",
+                    "content": USER_PROMPT_TEMPLATE.format(date_str=date_str),
+                }],
+            )
+            break
+        except anthropic.RateLimitError as e:
+            last_err = e
+            if attempt == 3:
+                raise
+            wait = 75 * (attempt + 1)
+            print(f"[news] rate-limited (429); sleeping {wait}s before retry {attempt + 2}/4…", flush=True)
+            time.sleep(wait)
+    if message is None:
+        raise last_err or RuntimeError("Failed to obtain Claude response")
 
     # Persist the raw response for forensics on failure.
     debug_path = _debug_dir() / f"news-raw-{now.strftime('%Y-%m-%d')}.json"
