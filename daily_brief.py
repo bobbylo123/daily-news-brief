@@ -6,10 +6,13 @@ Dry run (no send): python3 daily_brief.py --no-send
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
 import traceback
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -47,6 +50,60 @@ def _archive_paths(now_aest: datetime) -> tuple[Path, Path]:
         archive_dir / f"daily-news-brief-{date_slug}.html",
         archive_dir / f"daily-news-brief-{date_slug}.json",
     )
+
+
+def _embed_images(items: list[dict]) -> list[dict]:
+    """Download each story's image and replace its URL with a base64 data URI.
+
+    This makes images permanently visible in the HTML regardless of CDN
+    hotlink-blocking — the image data lives inside the file itself.
+    Images larger than 1.5 MB are skipped to keep the file size reasonable.
+    """
+    _HEADERS = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    _MAX_BYTES = 1_500_000  # 1.5 MB
+
+    for item in items:
+        img_url = (item.get("image_url") or "").strip()
+        if not img_url or img_url.startswith("data:"):
+            continue
+        try:
+            req = urllib.request.Request(img_url, headers=_HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read(_MAX_BYTES + 1)
+                if len(raw) > _MAX_BYTES:
+                    print(f"[images] skipped (>1.5 MB): {img_url[:80]}", flush=True)
+                    item["image_url"] = ""
+                    continue
+                ctype = (
+                    resp.headers.get_content_type()
+                    or _guess_content_type(img_url)
+                )
+            b64 = base64.b64encode(raw).decode("ascii")
+            item["image_url"] = f"data:{ctype};base64,{b64}"
+            print(f"[images] embedded {len(raw)//1024}KB: {img_url[:60]}…", flush=True)
+        except Exception as exc:
+            print(f"[images] failed ({type(exc).__name__}): {img_url[:80]}", flush=True)
+            item["image_url"] = ""
+    return items
+
+
+def _guess_content_type(url: str) -> str:
+    low = url.split("?")[0].lower()
+    if low.endswith(".png"):
+        return "image/png"
+    if low.endswith(".gif"):
+        return "image/gif"
+    if low.endswith(".webp"):
+        return "image/webp"
+    return "image/jpeg"
 
 
 def _short_text_preface(items: list[dict], now_aest: datetime) -> str:
@@ -116,6 +173,9 @@ def main() -> int:
                 f"News fetch unavailable today; this brief re-uses {fallback.stem.split('-')[-3]}-"
                 f"{fallback.stem.split('-')[-2]}-{fallback.stem.split('-')[-1]} content."
             )
+
+    print("[images] downloading and embedding story images…", flush=True)
+    items = _embed_images(items)
 
     print("[weather] fetching Brisbane weather…", flush=True)
     weather = WeatherFetcher().get_brisbane_weather()

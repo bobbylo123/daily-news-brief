@@ -2,17 +2,20 @@ name: Daily News Brief
 
 on:
   schedule:
-    - cron: '0 23 * * *'
+    # 22:00 UTC = 08:00 AEST (UTC+10). GitHub Actions can delay by 30-60 min,
+    # so firing at 08:00 AEST ensures delivery lands by ~09:00 AEST.
+    - cron: '0 22 * * *'
   workflow_dispatch:
 
 jobs:
   brief:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.11'
       - run: pip install -r requirements.txt
       - run: python daily_brief.py
         env:
