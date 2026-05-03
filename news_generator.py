@@ -88,7 +88,7 @@ For each story, gather:
     table, etc.). Use only inline styles, no <script>, no external CSS,
     no <link> tags. Keep it under ~1500 characters.
 
-Also provide these three top-level fields:
+Also provide these four top-level fields:
   * quote_of_day: The single most striking verbatim quote from any of today's
     three stories. Include the speaker's full name and title, and the outlet.
   * market_numbers: 4-6 key stock/financial figures relevant to today's
@@ -100,6 +100,12 @@ Also provide these three top-level fields:
   * daily_note: One sharp, analytical sentence (20-30 words) capturing the
     overarching theme connecting today's three stories. Written as a senior
     editor's insight, not a summary. No clichés.
+  * key_events_to_watch: 3-4 specific upcoming events directly tied to today's
+    three stories — things the reader should monitor. Each needs a short date
+    (e.g. "May 7", "This week", "June 2026") and one concise sentence (max
+    15 words) describing what to watch. Examples: Fed rate decision, UN vote,
+    earnings release, peace-talk resumption, CPI data print, election date,
+    court ruling, treaty deadline, OPEC meeting.
 
 When the research is done, call the `submit_daily_brief` tool ONCE with all
 three stories in the order: Global, Business & Markets, Hong Kong."""
@@ -114,8 +120,26 @@ SUBMIT_TOOL = {
     ),
     "input_schema": {
         "type": "object",
-        "required": ["items", "quote_of_day", "market_numbers", "daily_note"],
+        "required": ["items", "quote_of_day", "market_numbers", "daily_note", "key_events_to_watch"],
         "properties": {
+            "key_events_to_watch": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 4,
+                "description": (
+                    "3-4 specific upcoming events, deadlines, or data releases directly related to today's stories. "
+                    "Each entry tells the reader what to watch next. Examples: Fed rate decision, UN vote, "
+                    "earnings release, peace talks, CPI data, election date, court hearing, treaty deadline."
+                ),
+                "items": {
+                    "type": "object",
+                    "required": ["date", "event"],
+                    "properties": {
+                        "date": {"type": "string", "description": "Short date or timeframe e.g. 'May 7', 'Next week', 'Q3 2026'"},
+                        "event": {"type": "string", "description": "One concise sentence describing what to watch (max 15 words)"},
+                    },
+                },
+            },
             "daily_note": {
                 "type": "string",
                 "description": "One sharp editorial sentence (20-30 words) on today's overarching theme",
@@ -357,6 +381,8 @@ def fetch_daily_news(
         "items": ordered,
         "quote_of_day": submission.get("quote_of_day") or {},
         "market_numbers": submission.get("market_numbers") or [],
+        "key_events_to_watch": submission.get("key_events_to_watch") or [],
+        "daily_note": submission.get("daily_note") or "",
     }
 
 

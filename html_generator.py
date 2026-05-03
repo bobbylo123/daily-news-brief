@@ -457,9 +457,17 @@ def _render_left_panel(top_stocks_data: dict | None) -> str:
 
 
 def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
-    """Right header panel: At a Glance + Market Snapshot + Quote of the Day."""
+    """Right header panel — flex column so content always fills the full panel height.
 
-    # ── 1. Edition index ─────────────────────────────────────────────────────
+    Layout (top → bottom):
+      • At a Glance story index      ← flex-grow:1, expands to fill space
+      • Key Events to Watch          ← upcoming dates from today's stories
+      • Market Snapshot              ← 2-column grid of financial figures
+      • Quote of the Day             ← anchored at the bottom
+    """
+    _SEP = "border-top:1px solid rgba(201,162,74,0.22);padding-top:8px;margin-top:8px;"
+
+    # ── 1. Edition index (grows to fill remaining space) ─────────────────────
     SECTION_NUMS = ["01", "02", "03"]
     index_rows = []
     for i, it in enumerate(items):
@@ -471,20 +479,52 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
         read_time   = _read_time(it)
         border      = "border-bottom:1px solid rgba(201,162,74,0.13);" if i < len(items) - 1 else ""
         index_rows.append(
-            f'<div style="display:flex;gap:11px;padding:8px 0;{border}">'
+            f'<div style="display:flex;gap:11px;padding:9px 0;{border}">'
             f'<div style="font-family:Georgia,serif;font-size:20px;font-weight:bold;'
             f'color:rgba(201,162,74,0.28);line-height:1;flex-shrink:0;padding-top:3px;">{num}</div>'
             f'<div style="min-width:0;">'
             f'<div style="font-size:10px;letter-spacing:2px;color:{GOLD};text-transform:uppercase;margin-bottom:2px;">{cat}</div>'
             f'<div style="font-size:12.5px;color:#eae4d4;line-height:1.4;">{title}</div>'
-            + (f'<div style="font-size:10px;color:#6a7280;margin-top:2px;">{source_name} &middot; {read_time}</div>'
-               if source_name else f'<div style="font-size:10px;color:#6a7280;margin-top:2px;">{read_time}</div>')
+            + (f'<div style="font-size:10px;color:#6a7280;margin-top:3px;">{source_name} &middot; {read_time}</div>'
+               if source_name else f'<div style="font-size:10px;color:#6a7280;margin-top:3px;">{read_time}</div>')
             + f'</div></div>'
         )
 
-    # ── 2. Market snapshot ───────────────────────────────────────────────────
-    market_nums    = brief_meta.get("market_numbers") or []
-    market_section = ""
+    story_block = (
+        f'<div style="flex:1;min-height:0;">'
+        f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+        f'text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.26);'
+        f'padding-bottom:7px;">At a Glance</div>'
+        + "\n".join(index_rows)
+        + f'</div>'
+    )
+
+    # ── 2. Key Events to Watch ───────────────────────────────────────────────
+    watch_items = brief_meta.get("key_events_to_watch") or []
+    watch_block = ""
+    if watch_items:
+        rows = []
+        for ev in watch_items[:4]:
+            date  = _esc(ev.get("date", ""))
+            event = _esc(ev.get("event", ""))
+            rows.append(
+                f'<div style="display:flex;gap:8px;padding:3px 0;'
+                f'border-bottom:1px solid rgba(201,162,74,0.07);align-items:baseline;">'
+                f'<span style="font-size:9px;color:{GOLD};white-space:nowrap;font-weight:700;">{date}</span>'
+                f'<span style="font-size:11px;color:#ddd5bc;line-height:1.4;">{event}</span>'
+                f'</div>'
+            )
+        watch_block = (
+            f'<div style="{_SEP}">'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+            f'text-transform:uppercase;margin-bottom:6px;">Key Events to Watch</div>'
+            + "".join(rows)
+            + f'</div>'
+        )
+
+    # ── 3. Market snapshot ───────────────────────────────────────────────────
+    market_nums  = brief_meta.get("market_numbers") or []
+    market_block = ""
     if market_nums:
         cells = []
         for mn in market_nums[:6]:
@@ -500,8 +540,8 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
                 f'<span style="font-size:10px;color:{chg_color};">{change}</span>'
                 f'</div></div>'
             )
-        market_section = (
-            f'<div style="border-top:1px solid rgba(201,162,74,0.26);margin-top:9px;padding-top:8px;">'
+        market_block = (
+            f'<div style="{_SEP}">'
             f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
             f'text-transform:uppercase;margin-bottom:6px;">Market Snapshot</div>'
             f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;">'
@@ -509,16 +549,16 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
             + f'</div></div>'
         )
 
-    # ── 3. Quote of the Day ──────────────────────────────────────────────────
-    qod           = brief_meta.get("quote_of_day") or {}
-    quote_section = ""
+    # ── 4. Quote of the Day ──────────────────────────────────────────────────
+    qod         = brief_meta.get("quote_of_day") or {}
+    quote_block = ""
     if qod and qod.get("quote"):
         quote   = _esc(qod.get("quote", ""))
         speaker = _esc(qod.get("speaker", ""))
         source  = _esc(qod.get("source", ""))
         attr    = f"— {speaker}" + (f", {source}" if source else "")
-        quote_section = (
-            f'<div style="border-top:1px solid rgba(201,162,74,0.26);margin-top:9px;padding-top:8px;">'
+        quote_block = (
+            f'<div style="{_SEP}">'
             f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
             f'text-transform:uppercase;margin-bottom:5px;">Quote of the Day</div>'
             f'<div style="font-size:12px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
@@ -526,14 +566,15 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
             + f'</div>'
         )
 
-    return "".join([
-        f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
-        f'text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.26);'
-        f'padding-bottom:7px;">At a Glance</div>',
-        "\n".join(index_rows),
-        market_section,
-        quote_section,
-    ])
+    # Flex column — story block grows, the rest pins to the bottom
+    return (
+        f'<div style="display:flex;flex-direction:column;height:100%;gap:0;">'
+        + story_block
+        + watch_block
+        + market_block
+        + quote_block
+        + f'</div>'
+    )
 
 
 def _render_preview(items: list[dict[str, Any]]) -> str:
