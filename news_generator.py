@@ -52,15 +52,22 @@ Find TODAY'S single most newsworthy story for EACH of these three categories:
 For each story, gather:
   * The official headline (verbatim from the lead source).
   * A direct article URL from the lead outlet.
-  * A topical news photograph URL that is DIRECTLY EMBEDDABLE in HTML (i.e.,
-    the CDN does NOT block hotlinking). Strongly prefer these sources in order:
-      1. BBC: ichef.bbci.co.uk/news/... or ichef.bbci.co.uk/ace/...
-      2. Reuters: cloudfront-us-east-2.images.arcpublishing.com/...
-      3. Al Jazeera: www.aljazeera.com/wp-content/uploads/...
-      4. AP: dims.apnews.com/dims4/default/...
-      5. AFP via Getty: media.gettyimages.com/photos/... (only if publicly embeddable)
-    Avoid CBS News, CNBC image CDNs, and SCMP CDN as they block hotlinking.
-    If genuinely none available, leave empty.
+  * A topical news photograph URL. STRICT RULES — failure to follow = leave empty:
+      1. You MUST have seen this EXACT URL in a search result or on a web page.
+         DO NOT construct, guess, or truncate a URL. A missing image is far better
+         than a broken or partial link.
+      2. The URL MUST end with a recognised image extension: .jpg .jpeg .png .webp
+         or .gif — URLs that end with digits, underscores, or letters without an
+         extension are FORBIDDEN and must be left empty.
+      3. Strongly prefer these embeddable CDNs (in order):
+           a. BBC:     https://ichef.bbci.co.uk/news/1024/cpsprodpb/XXXX/live/XXXX.jpg
+           b. Reuters: https://cloudfront-us-east-2.images.arcpublishing.com/reuters/XXXX.jpg
+           c. AP:      https://dims.apnews.com/dims4/default/XXXX/XXXX/strip/true/XXXX.jpg
+           d. Al Jazeera: https://www.aljazeera.com/wp-content/uploads/YYYY/MM/XXXX.jpg
+      4. To find the exact URL: use web_search to open the article page, then copy
+         the full src= value of the lead image — do not shorten or paraphrase it.
+      5. Avoid CBS News, CNBC, SCMP CDNs — they block hotlinking.
+      6. If you cannot find a complete, verified URL with an image extension, leave empty.
   * A direct video-report URL. STRICT RULES — failure to follow = leave empty:
       1. Use web_search to find the video (e.g. search YouTube for the headline).
       2. The URL MUST contain "watch?v=" — channel pages and playlists are forbidden.

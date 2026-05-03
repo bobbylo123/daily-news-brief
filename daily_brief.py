@@ -52,6 +52,23 @@ def _archive_paths(now_aest: datetime) -> tuple[Path, Path]:
     )
 
 
+import re as _re
+_IMG_EXT_RE = _re.compile(
+    r'\.(jpg|jpeg|png|webp|gif|avif)(\?[^\s]*)?$', _re.IGNORECASE
+)
+
+
+def _url_has_image_extension(url: str) -> bool:
+    """Return True only when the URL contains a recognised image file extension.
+
+    URLs that end with bare digits, underscores, or letters (i.e. truncated
+    or hallucinated URLs from the model) are rejected before we waste a
+    network round-trip.
+    """
+    path = url.split("?")[0].split("#")[0]
+    return bool(_IMG_EXT_RE.search(path))
+
+
 def _embed_images(items: list[dict]) -> list[dict]:
     """Download each story's image and replace its URL with a base64 data URI.
 
@@ -74,18 +91,37 @@ def _embed_images(items: list[dict]) -> list[dict]:
         img_url = (item.get("image_url") or "").strip()
         if not img_url or img_url.startswith("data:"):
             continue
+
+        # Reject URLs without a proper image extension — these are truncated /
+        # hallucinated URLs that will always 404 and waste network time.
+        if not _url_has_image_extension(img_url):
+            print(
+                f"[images] rejected (no image extension — likely truncated): "
+                f"{img_url[:80]}",
+                flush=True,
+            )
+            item["image_url"] = ""
+            continue
+
         try:
             req = urllib.request.Request(img_url, headers=_HEADERS)
             with urllib.request.urlopen(req, timeout=15) as resp:
+                # Verify server actually returned an image content-type.
+                srv_ctype = resp.headers.get_content_type() or ""
+                if srv_ctype and not srv_ctype.startswith("image/"):
+                    print(
+                        f"[images] skipped (server returned {srv_ctype!r}): "
+                        f"{img_url[:80]}",
+                        flush=True,
+                    )
+                    item["image_url"] = ""
+                    continue
                 raw = resp.read(_MAX_BYTES + 1)
                 if len(raw) > _MAX_BYTES:
                     print(f"[images] skipped (>1.5 MB): {img_url[:80]}", flush=True)
                     item["image_url"] = ""
                     continue
-                ctype = (
-                    resp.headers.get_content_type()
-                    or _guess_content_type(img_url)
-                )
+                ctype = srv_ctype or _guess_content_type(img_url)
             b64 = base64.b64encode(raw).decode("ascii")
             item["image_url"] = f"data:{ctype};base64,{b64}"
             print(f"[images] embedded {len(raw)//1024}KB: {img_url[:60]}…", flush=True)
