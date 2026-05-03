@@ -402,11 +402,11 @@ def _normalise(item: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Top-5 US intraday stock picks
+# Top-4 US intraday stock picks
 # ---------------------------------------------------------------------------
 
 STOCK_SYSTEM_PROMPT = """You are an aggressive US equity momentum analyst hunting for
-explosive intraday movers on NYSE and NASDAQ. Your sole task is to find the 5 US stocks
+explosive intraday movers on NYSE and NASDAQ. Your sole task is to find the 4 US stocks
 with the HIGHEST potential intraday gain during TODAY's regular session (9:30 am – 4:00 pm EDT).
 
 Target profile — ONLY include stocks that fit at least one of these high-upside setups:
@@ -439,7 +439,7 @@ Selection rules (non-negotiable):
 * US-listed NYSE or NASDAQ stocks ONLY. No OTC, no crypto, no ETFs.
 * Minimum expected intraday gain: +30%. Ideal target range: +30% to +80%.
 * The gain must materialise WITHIN today's single session — NOT over days/weeks.
-* Rank the 5 picks by probability-weighted expected intraday gain (highest conviction #1).
+* Rank the 4 picks by probability-weighted expected intraday gain (highest conviction #1).
 * Every pick MUST have a concrete, verifiable catalyst found via web_search.
 * REJECT large-cap blue chips (AAPL, MSFT, NVDA, etc.) — they rarely move >5% intraday.
   Focus on small-cap ($50M–$2B market cap) and mid-cap stocks with binary catalysts.
@@ -449,7 +449,7 @@ STOCK_USER_PROMPT_TEMPLATE = """Today is {date_str} (Brisbane/AEST).
 The US regular trading session is {us_date_str}: 9:30 am – 4:00 pm EDT
 (= {aest_open_str} – {aest_close_str} AEST on {aest_dates_str}).
 
-Your goal: find 5 stocks that could gain +30% to +80%+ WITHIN this single session.
+Your goal: find 4 stocks that could gain +30% to +80%+ WITHIN this single session.
 Focus ONLY on small/mid-caps with binary catalysts — not large-cap blue chips.
 
 Execute this research checklist:
@@ -460,7 +460,7 @@ Execute this research checklist:
 5. Search "unusual options activity {us_date_str}" and "call sweep unusual options today".
 6. Search "acquisition merger announcement today {us_date_str}".
 7. For each shortlisted candidate: search "[TICKER] news {us_date_str}" to confirm catalyst.
-8. Shortlist at least 8–10 candidates, then select the top 5 by expected intraday gain %.
+8. Shortlist at least 6–8 candidates, then select the top 4 by expected intraday gain %.
 
 For every final pick, confirm ALL of the following:
   • ticker + company name + sector
@@ -482,7 +482,7 @@ For every final pick, confirm ALL of the following:
 TOP_STOCKS_TOOL = {
     "name": "submit_top_stocks",
     "description": (
-        "Submit the final ranked list of the top 5 US intraday stock picks. "
+        "Submit the final ranked list of the top 4 US intraday stock picks. "
         "Call this exactly once after all research is complete."
     ),
     "input_schema": {
@@ -499,9 +499,9 @@ TOP_STOCKS_TOOL = {
             },
             "stocks": {
                 "type": "array",
-                "minItems": 5,
-                "maxItems": 5,
-                "description": "Top 5 picks, ranked #1 (highest conviction) to #5.",
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "Top 4 picks, ranked #1 (highest conviction) to #4.",
                 "items": {
                     "type": "object",
                     "required": [
@@ -513,7 +513,7 @@ TOP_STOCKS_TOOL = {
                     ],
                     "properties": {
                         "rank": {
-                            "type": "integer", "minimum": 1, "maximum": 5,
+                            "type": "integer", "minimum": 1, "maximum": 4,
                             "description": "1 = highest conviction",
                         },
                         "ticker": {"type": "string", "description": "e.g. GRPN"},
@@ -616,7 +616,7 @@ def fetch_top_stocks(
     model: str = "claude-sonnet-4-6",
     max_searches: int = 18,
 ) -> dict[str, Any]:
-    """Identify the top 5 US intraday stock picks for the next US trading session.
+    """Identify the top 4 US intraday stock picks for the next US trading session.
 
     Session mapping (AEST brief day → target EDT session):
       Mon–Thu AEST  →  same-name EDT day (next EDT day after 9 am AEST)
