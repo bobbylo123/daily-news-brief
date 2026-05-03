@@ -426,7 +426,7 @@ def _render_stock_card(stock: dict, idx: int) -> str:
 
 
 def _render_left_panel(top_stocks_data: dict | None, brief_meta: dict | None = None) -> str:
-    """Left header panel: Market Snapshot."""
+    """Left header panel: Market Snapshot + Quote of the Day."""
     _SEP = "border-top:1px solid rgba(201,162,74,0.22);padding-top:8px;margin-top:8px;"
     _meta = brief_meta or {}
 
@@ -462,7 +462,24 @@ def _render_left_panel(top_stocks_data: dict | None, brief_meta: dict | None = N
             f'<div style="color:#6a7280;font-size:11px;font-style:italic;">Market data unavailable.</div>'
         )
 
-    return market_block
+    # ── Quote of the Day ─────────────────────────────────────────────────
+    qod         = _meta.get("quote_of_day") or {}
+    quote_block = ""
+    if qod and qod.get("quote"):
+        quote   = _esc(qod.get("quote", ""))
+        speaker = _esc(qod.get("speaker", ""))
+        source  = _esc(qod.get("source", ""))
+        attr    = f"— {speaker}" + (f", {source}" if source else "")
+        quote_block = (
+            f'<div style="{_SEP}">'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+            f'text-transform:uppercase;margin-bottom:5px;">Quote of the Day</div>'
+            f'<div style="font-size:12px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
+            + (f'<div style="margin-top:4px;font-size:10px;color:#6a7280;">{_esc(attr)}</div>' if speaker else "")
+            + f'</div>'
+        )
+
+    return market_block + quote_block
 
 
 def _render_stocks_banner(top_stocks_data: dict | None) -> str:
@@ -565,21 +582,27 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
     watch_items = brief_meta.get("key_events_to_watch") or []
     watch_block = ""
     if watch_items:
+        # Use a CSS grid with a fixed date column (100px) so date and event
+        # are always on the same row — date never wraps into the event column.
         rows = []
-        for ev in watch_items[:4]:
+        for i, ev in enumerate(watch_items[:4]):
             date  = _esc(ev.get("date", ""))
             event = _esc(ev.get("event", ""))
+            border = "border-bottom:1px solid rgba(201,162,74,0.10);" if i < len(watch_items[:4]) - 1 else ""
             rows.append(
-                f'<div style="display:flex;gap:8px;padding:3px 0;'
-                f'border-bottom:1px solid rgba(201,162,74,0.07);align-items:baseline;">'
-                f'<span style="font-size:9px;color:{GOLD};white-space:nowrap;font-weight:700;">{date}</span>'
-                f'<span style="font-size:11px;color:#ddd5bc;line-height:1.4;">{event}</span>'
-                f'</div>'
+                # Date cell
+                f'<div style="padding:5px 8px 5px 0;{border}font-size:9.5px;font-weight:700;'
+                f'color:{GOLD};white-space:nowrap;line-height:1.4;">{date}</div>'
+                # Event cell
+                f'<div style="padding:5px 0;{border}font-size:11px;color:#ddd5bc;line-height:1.4;">{event}</div>'
             )
         watch_block = (
             f'<div style="{_SEP}">'
             f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
-            f'text-transform:uppercase;margin-bottom:6px;">Key Events to Watch</div>'
+            f'text-transform:uppercase;margin-bottom:8px;">Key Events to Watch</div>'
+            f'<div style="display:grid;grid-template-columns:100px 1fr;align-items:start;">'
+            + "".join(rows)
+            + f'</div>'
             + "".join(rows)
             + f'</div>'
         )
