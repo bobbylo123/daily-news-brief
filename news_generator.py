@@ -379,44 +379,72 @@ def _normalise(item: dict[str, Any]) -> dict[str, Any]:
 # Top-5 US intraday stock picks
 # ---------------------------------------------------------------------------
 
-STOCK_SYSTEM_PROMPT = """You are a professional US equity quantitative analyst
-specialising in identifying high-conviction intraday trading opportunities on NYSE
-and NASDAQ. Your sole task is to identify the 5 US stocks most likely to make a
-meaningful intraday gain during TODAY's regular session (9:30 am – 4:00 pm EDT).
+STOCK_SYSTEM_PROMPT = """You are an aggressive US equity momentum analyst hunting for
+explosive intraday movers on NYSE and NASDAQ. Your sole task is to find the 5 US stocks
+with the HIGHEST potential intraday gain during TODAY's regular session (9:30 am – 4:00 pm EDT).
+
+Target profile — ONLY include stocks that fit at least one of these high-upside setups:
+  A. FDA BINARY EVENT  : PDUFA dates, CRL decisions, fast-track/breakthrough designations.
+     Biotech with binary catalyst can move +30% to +200% intraday on approval.
+  B. EARNINGS SURPRISE : Small/mid-cap beating EPS by >15% or revenue by >10%. Post-earnings
+     gap-and-run from a compressed base can add +30–80% on the day.
+  C. SHORT SQUEEZE     : Stock with >20% short float + fresh positive catalyst + rising volume.
+     Forced short covering drives exponential intraday spikes.
+  D. PRE-MARKET GAPPER : Already up >15% pre-market on news. Stocks that gap >15% often
+     continue intraday — confirm the catalyst is real and strong enough to sustain.
+  E. M&A / TAKEOVER    : Acquisition announcement at a significant premium. Target stock
+     price converges to offer price intraday — 20–50%+ gain is common.
+  F. MAJOR ANALYST UPGRADE: Strong buy initiation or target-price doubling by a tier-1 firm
+     on a heavily covered stock with technical momentum aligned.
 
 Research methodology — follow every step:
-1. CATALYST SCAN  : Search for today's US earnings releases, FDA decisions, analyst
-   upgrades/initiations, M&A announcements, and macro data reports that move sectors.
-2. PRE-MARKET     : Search for pre-market top gainers and the reasons behind each move.
-3. TECHNICALS     : For shortlisted candidates check RSI, MACD, 50-day and 200-day
-   MA relationship, Bollinger Band position, and volume vs. 20-day average.
-4. OPTIONS FLOW   : Unusual call-options buying (especially same-day expiry or weekly)
-   is a strong signal of institutional conviction for an intraday move.
-5. SHORT SQUEEZE  : High short-interest stocks with a fresh positive catalyst can move
-   explosively intraday — flag these explicitly.
+1. FDA CALENDAR    : Search "FDA PDUFA dates" and "FDA drug decisions today".
+2. PRE-MARKET      : Search "pre-market top gainers today" and investigate the specific
+                     catalyst behind each gapper (confirm quality and sustainability).
+3. EARNINGS        : Search "earnings surprise today small cap beat" and
+                     "after hours earnings beats".
+4. SHORT SQUEEZE   : Search "most shorted stocks today" and "short squeeze candidates".
+5. UNUSUAL OPTIONS : Search "unusual options activity today" and
+                     "0DTE call sweep today" — massive call sweeps = institutional conviction.
+6. M&A / UPGRADES  : Search "acquisition announcement today" and
+                     "analyst upgrade initiation today".
 
 Selection rules (non-negotiable):
-* US-listed stocks ONLY (NYSE or NASDAQ). No OTC, no crypto, no ETFs.
-* The expected gain must materialise WITHIN today's single session — NOT over days/weeks.
-* Rank the final 5 by probability-weighted expected intraday gain, highest first.
-* Every pick must have at least one concrete, verifiable catalyst found via web_search.
+* US-listed NYSE or NASDAQ stocks ONLY. No OTC, no crypto, no ETFs.
+* Minimum expected intraday gain: +30%. Ideal target range: +30% to +80%.
+* The gain must materialise WITHIN today's single session — NOT over days/weeks.
+* Rank the 5 picks by probability-weighted expected intraday gain (highest conviction #1).
+* Every pick MUST have a concrete, verifiable catalyst found via web_search.
+* REJECT large-cap blue chips (AAPL, MSFT, NVDA, etc.) — they rarely move >5% intraday.
+  Focus on small-cap ($50M–$2B market cap) and mid-cap stocks with binary catalysts.
 * This output is for informational/educational purposes ONLY. It is NOT investment advice."""
 
 STOCK_USER_PROMPT_TEMPLATE = """Today is {date_str} (Brisbane/AEST).
 The US regular trading session is {us_date_str}: 9:30 am – 4:00 pm EDT
 (= {aest_open_str} – {aest_close_str} AEST on {aest_dates_str}).
 
-Conduct thorough research using web_search, then call `submit_top_stocks` ONCE with
-your top 5 picks ranked from highest to lowest probability of intraday gain.
+Your goal: find 5 stocks that could gain +30% to +80%+ WITHIN this single session.
+Focus ONLY on small/mid-caps with binary catalysts — not large-cap blue chips.
 
-Research checklist:
-1. Search "US earnings today {us_date_str}" — identify pre/post-market releases.
-2. Search "stock market movers today {us_date_str}" and "pre-market gainers".
-3. For each strong candidate: search "[TICKER] technical analysis {us_date_str}".
-4. Search "unusual options activity today" for institutional flow signals.
-5. Shortlist at least 10 candidates, then select the best 5 by conviction level.
-6. For every final pick: confirm the ticker, last close price, specific catalyst,
-   two measurable technical indicators, and your expected intraday gain range."""
+Execute this research checklist:
+1. Search "FDA PDUFA dates {us_date_str}" and "FDA drug approval decision today {us_date_str}".
+2. Search "pre-market top gainers today {us_date_str}" — check stocks already up >15% pre-market.
+3. Search "earnings surprise {us_date_str} small cap beat" and "after hours earnings tonight".
+4. Search "short squeeze stocks {us_date_str}" and "most shorted NYSE NASDAQ stocks".
+5. Search "unusual options activity {us_date_str}" and "call sweep unusual options today".
+6. Search "acquisition merger announcement today {us_date_str}".
+7. For each shortlisted candidate: search "[TICKER] news {us_date_str}" to confirm catalyst.
+8. Shortlist at least 8–10 candidates, then select the top 5 by expected intraday gain %.
+
+For every final pick, confirm:
+  • Ticker and exact company name
+  • Specific catalyst (FDA, earnings beat, short squeeze, M&A, gapper, analyst upgrade)
+  • Last close price or pre-market price
+  • Expected intraday gain range (MUST be ≥ +30%)
+  • Setup type: one of FDA Decision, Earnings Surprise, Short Squeeze, Pre-Market Gapper,
+    M&A Announcement, Analyst Upgrade, Technical Breakout
+  • 2–3 supporting technical indicators (RSI, volume vs avg, MA position, short float %)
+  • Risk level: High for binary events (FDA), Medium for earnings/squeeze plays"""
 
 TOP_STOCKS_TOOL = {
     "name": "submit_top_stocks",
@@ -445,7 +473,7 @@ TOP_STOCKS_TOOL = {
                     "type": "object",
                     "required": [
                         "rank", "ticker", "company", "sector",
-                        "last_price", "expected_gain_pct",
+                        "last_price", "setup_type", "expected_gain_pct",
                         "catalyst", "technical_summary",
                         "risk_level", "confidence_level",
                     ],
@@ -461,17 +489,30 @@ TOP_STOCKS_TOOL = {
                             "type": "string",
                             "description": "Last close or pre-market price e.g. $875.50",
                         },
+                        "setup_type": {
+                            "type": "string",
+                            "enum": [
+                                "FDA Decision",
+                                "Earnings Surprise",
+                                "Short Squeeze",
+                                "Pre-Market Gapper",
+                                "M&A Announcement",
+                                "Analyst Upgrade",
+                                "Technical Breakout",
+                            ],
+                            "description": "Primary setup type driving the explosive intraday move",
+                        },
                         "expected_gain_pct": {
                             "type": "string",
-                            "description": "Expected intraday gain range e.g. +2–4%",
+                            "description": "Expected intraday gain range — MUST be ≥ +30%, e.g. +35–55% or +40–80%",
                         },
                         "catalyst": {
                             "type": "string",
-                            "description": "Primary catalyst driving today's move (40-80 words)",
+                            "description": "Specific catalyst driving today's explosive move (40-80 words)",
                         },
                         "technical_summary": {
                             "type": "string",
-                            "description": "2-3 key technical indicators e.g. RSI 62, above 50-day MA, volume 180% avg",
+                            "description": "2-3 key signals e.g. RSI 72, short float 38%, volume 420% avg, above 50-day MA",
                         },
                         "risk_level": {
                             "type": "string",

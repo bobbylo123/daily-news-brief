@@ -324,18 +324,29 @@ def _outlet_from_url(url: str) -> str:
         return "source"
 
 
+_SETUP_TYPE_COLORS = {
+    "FDA Decision":       ("#7c3aed", "rgba(124,58,237,0.18)"),   # purple
+    "Earnings Surprise":  ("#0ea5e9", "rgba(14,165,233,0.18)"),   # sky blue
+    "Short Squeeze":      ("#f97316", "rgba(249,115,22,0.18)"),   # orange
+    "Pre-Market Gapper":  ("#ec4899", "rgba(236,72,153,0.18)"),   # pink
+    "M&A Announcement":   ("#10b981", "rgba(16,185,129,0.18)"),   # emerald
+    "Analyst Upgrade":    ("#c9a24a", "rgba(201,162,74,0.18)"),   # gold
+    "Technical Breakout": ("#38bdf8", "rgba(56,189,248,0.18)"),   # light blue
+}
+
+
 def _render_stock_card(stock: dict, idx: int) -> str:
     """Render one stock pick card for the left panel."""
-    rank      = _esc(str(stock.get("rank", idx + 1)))
-    ticker    = _esc(stock.get("ticker", "—"))
-    company   = _esc(stock.get("company", ""))
-    sector    = _esc(stock.get("sector", ""))
-    price     = _esc(stock.get("last_price", ""))
-    gain      = _esc(stock.get("expected_gain_pct", ""))
-    catalyst  = _esc(stock.get("catalyst", ""))
-    technical = _esc(stock.get("technical_summary", ""))
-    risk      = stock.get("risk_level", "Medium")
-    conf      = stock.get("confidence_level", "High")
+    rank       = _esc(str(stock.get("rank", idx + 1)))
+    ticker     = _esc(stock.get("ticker", "—"))
+    company    = _esc(stock.get("company", ""))
+    price      = _esc(stock.get("last_price", ""))
+    gain       = _esc(stock.get("expected_gain_pct", ""))
+    setup_type = stock.get("setup_type", "")
+    catalyst   = _esc(stock.get("catalyst", ""))
+    technical  = _esc(stock.get("technical_summary", ""))
+    risk       = stock.get("risk_level", "Medium")
+    conf       = stock.get("confidence_level", "High")
 
     risk_colors = {
         "Low":    ("rgba(74,222,128,0.15)", "#4ade80"),
@@ -349,24 +360,32 @@ def _render_stock_card(stock: dict, idx: int) -> str:
     }
     r_bg, r_fg = risk_colors.get(risk, risk_colors["Medium"])
     c_bg, c_fg = conf_colors.get(conf, conf_colors["High"])
+    s_fg, s_bg = _SETUP_TYPE_COLORS.get(setup_type, ("#c9a24a", "rgba(201,162,74,0.18)"))
 
     border_top = "border-top:1px solid rgba(201,162,74,0.18);padding-top:10px;" if idx > 0 else ""
+    setup_badge = (
+        f'<span style="font-size:9px;padding:2px 8px;border-radius:3px;'
+        f'background:{s_bg};color:{s_fg};font-weight:bold;letter-spacing:0.5px;">'
+        f'{_esc(setup_type)}</span> '
+    ) if setup_type else ""
 
     return (
         f'<div style="{border_top}margin-bottom:10px;">'
-        # Row 1: rank + ticker + gain
+        # Row 1: rank + ticker + gain (gain is large + bright green)
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">'
         f'<div>'
         f'<span style="font-size:10px;color:#8a8070;margin-right:4px;">#{rank}</span>'
-        f'<span style="font-size:15px;font-weight:bold;color:{GOLD};letter-spacing:0.5px;">{ticker}</span>'
+        f'<span style="font-size:16px;font-weight:bold;color:{GOLD};letter-spacing:0.5px;">{ticker}</span>'
         f'</div>'
-        f'<span style="font-size:13px;font-weight:bold;color:#4ade80;">{gain}</span>'
+        f'<span style="font-size:15px;font-weight:bold;color:#4ade80;letter-spacing:-0.5px;">{gain}</span>'
         f'</div>'
-        # Row 2: company + sector + price
-        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'
+        # Row 2: company + price
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
         f'<span style="font-size:10px;color:#8a8070;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{company}</span>'
         f'<span style="font-size:11px;color:#c8bfa8;white-space:nowrap;">{price}</span>'
         f'</div>'
+        # Setup type badge
+        f'<div style="margin-bottom:5px;">{setup_badge}</div>'
         # Catalyst
         f'<div style="font-size:11px;color:#ddd6c0;line-height:1.45;margin-bottom:4px;">'
         f'<span style="color:{GOLD};font-size:10px;">&#9889;</span> {catalyst}'
@@ -376,7 +395,7 @@ def _render_stock_card(stock: dict, idx: int) -> str:
         f'&#9641; {technical}'
         f'</div>'
         # Badges: risk + confidence
-        f'<div style="display:flex;gap:5px;">'
+        f'<div style="display:flex;gap:5px;flex-wrap:wrap;">'
         f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;'
         f'background:{r_bg};color:{r_fg};font-weight:bold;letter-spacing:0.5px;">'
         f'{_esc(risk)} Risk</span>'
@@ -419,12 +438,13 @@ def _render_left_panel(quote_of_day: dict, top_stocks_data: dict | None) -> str:
             f'<div>'
             f'<div style="border-top:1px solid rgba(201,162,74,0.4);margin:0 0 10px 0;"></div>'
             f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;'
-            f'text-transform:uppercase;margin-bottom:4px;">Top 5 Picks &middot; US Session</div>'
+            f'text-transform:uppercase;margin-bottom:2px;">Top 5 High-Upside Picks &middot; US Session</div>'
+            f'<div style="font-size:9px;color:#4ade80;letter-spacing:1px;margin-bottom:6px;">Target: +30% to +80%+ intraday</div>'
             + session_line
             + cards
             + f'<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(201,162,74,0.12);'
             f'font-size:9px;color:#5b6577;line-height:1.4;font-style:italic;">'
-            f'&#9888; For informational purposes only. Not financial advice. '
+            f'&#9888; Informational only. Not financial advice. High-upside plays carry extreme risk. '
             f'Past performance does not guarantee future results.</div>'
             f'</div>'
         )
