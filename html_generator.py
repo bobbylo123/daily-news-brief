@@ -425,8 +425,11 @@ def _render_stock_card(stock: dict, idx: int) -> str:
     ])
 
 
-def _render_left_panel(top_stocks_data: dict | None) -> str:
-    """Left header panel: purely the Top 5 high-upside stock picks."""
+def _render_left_panel(top_stocks_data: dict | None, brief_meta: dict | None = None) -> str:
+    """Left header panel: Top 5 high-upside stock picks + Market Snapshot + Quote of Day."""
+    _SEP = "border-top:1px solid rgba(201,162,74,0.22);padding-top:8px;margin-top:8px;"
+    _meta = brief_meta or {}
+
     stocks       = (top_stocks_data or {}).get("stocks") or []
     session_aest = _esc((top_stocks_data or {}).get("session_aest", ""))
 
@@ -443,6 +446,50 @@ def _render_left_panel(top_stocks_data: dict | None) -> str:
 
     cards = "".join(_render_stock_card(s, i) for i, s in enumerate(stocks))
 
+    # ── Market Snapshot ──────────────────────────────────────────────────
+    market_nums  = _meta.get("market_numbers") or []
+    market_block = ""
+    if market_nums:
+        cells = []
+        for mn in market_nums[:6]:
+            label     = _esc(mn.get("label", ""))
+            value     = _esc(_clean_mkt_value(mn.get("value", "")))
+            change    = _esc(_clean_mkt_change(mn.get("change", "")))
+            chg_color = "#4ade80" if "+" in change else "#f87171" if "-" in change else "#94a3b8"
+            cells.append(
+                f'<div style="padding:3px 0;border-bottom:1px solid rgba(201,162,74,0.07);">'
+                f'<div style="font-size:9px;color:#6a7280;letter-spacing:0.3px;">{label}</div>'
+                f'<div style="display:flex;align-items:baseline;gap:5px;">'
+                f'<span style="font-size:11px;font-weight:600;color:#ddd5bc;">{value}</span>'
+                f'<span style="font-size:10px;color:{chg_color};">{change}</span>'
+                f'</div></div>'
+            )
+        market_block = (
+            f'<div style="{_SEP}">'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+            f'text-transform:uppercase;margin-bottom:6px;">Market Snapshot</div>'
+            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;">'
+            + "".join(cells)
+            + f'</div></div>'
+        )
+
+    # ── Quote of the Day ─────────────────────────────────────────────────
+    qod         = _meta.get("quote_of_day") or {}
+    quote_block = ""
+    if qod and qod.get("quote"):
+        quote   = _esc(qod.get("quote", ""))
+        speaker = _esc(qod.get("speaker", ""))
+        source  = _esc(qod.get("source", ""))
+        attr    = f"— {speaker}" + (f", {source}" if source else "")
+        quote_block = (
+            f'<div style="{_SEP}">'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+            f'text-transform:uppercase;margin-bottom:5px;">Quote of the Day</div>'
+            f'<div style="font-size:12px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
+            + (f'<div style="margin-top:4px;font-size:10px;color:#6a7280;">{_esc(attr)}</div>' if speaker else "")
+            + f'</div>'
+        )
+
     return "".join([
         f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
         f'text-transform:uppercase;margin-bottom:2px;">Top 5 High-Upside Picks &middot; US</div>',
@@ -450,6 +497,8 @@ def _render_left_panel(top_stocks_data: dict | None) -> str:
         f'Target: +30% to +80%+ intraday gain</div>',
         session_line,
         cards,
+        market_block,
+        quote_block,
         f'<div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(201,162,74,0.1);'
         f'font-size:8.5px;color:#4a5568;line-height:1.4;font-style:italic;">'
         f'&#9888; Informational only. Not financial advice. High-upside plays carry extreme risk.</div>',
@@ -457,17 +506,15 @@ def _render_left_panel(top_stocks_data: dict | None) -> str:
 
 
 def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
-    """Right header panel — flex column so content always fills the full panel height.
+    """Right header panel — Daily News Brief.
 
     Layout (top → bottom):
-      • At a Glance story index      ← flex-grow:1, expands to fill space
-      • Key Events to Watch          ← upcoming dates from today's stories
-      • Market Snapshot              ← 2-column grid of financial figures
-      • Quote of the Day             ← anchored at the bottom
+      • At a Glance story index      ← main content
+      • Key Events to Watch          ← upcoming dates from today's stories (if present)
     """
     _SEP = "border-top:1px solid rgba(201,162,74,0.22);padding-top:8px;margin-top:8px;"
 
-    # ── 1. Edition index (grows to fill remaining space) ─────────────────────
+    # ── 1. Edition index ──────────────────────────────────────────────────────
     SECTION_NUMS = ["01", "02", "03"]
     index_rows = []
     for i, it in enumerate(items):
@@ -491,10 +538,10 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
         )
 
     story_block = (
-        f'<div style="flex:1;min-height:0;">'
+        f'<div>'
         f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
         f'text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.26);'
-        f'padding-bottom:7px;">At a Glance</div>'
+        f'padding-bottom:7px;">Daily News Brief</div>'
         + "\n".join(index_rows)
         + f'</div>'
     )
@@ -522,57 +569,10 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
             + f'</div>'
         )
 
-    # ── 3. Market snapshot ───────────────────────────────────────────────────
-    market_nums  = brief_meta.get("market_numbers") or []
-    market_block = ""
-    if market_nums:
-        cells = []
-        for mn in market_nums[:6]:
-            label     = _esc(mn.get("label", ""))
-            value     = _esc(_clean_mkt_value(mn.get("value", "")))
-            change    = _esc(_clean_mkt_change(mn.get("change", "")))
-            chg_color = "#4ade80" if "+" in change else "#f87171" if "-" in change else "#94a3b8"
-            cells.append(
-                f'<div style="padding:3px 0;border-bottom:1px solid rgba(201,162,74,0.07);">'
-                f'<div style="font-size:9px;color:#6a7280;letter-spacing:0.3px;">{label}</div>'
-                f'<div style="display:flex;align-items:baseline;gap:5px;">'
-                f'<span style="font-size:11px;font-weight:600;color:#ddd5bc;">{value}</span>'
-                f'<span style="font-size:10px;color:{chg_color};">{change}</span>'
-                f'</div></div>'
-            )
-        market_block = (
-            f'<div style="{_SEP}">'
-            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
-            f'text-transform:uppercase;margin-bottom:6px;">Market Snapshot</div>'
-            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;">'
-            + "".join(cells)
-            + f'</div></div>'
-        )
-
-    # ── 4. Quote of the Day ──────────────────────────────────────────────────
-    qod         = brief_meta.get("quote_of_day") or {}
-    quote_block = ""
-    if qod and qod.get("quote"):
-        quote   = _esc(qod.get("quote", ""))
-        speaker = _esc(qod.get("speaker", ""))
-        source  = _esc(qod.get("source", ""))
-        attr    = f"— {speaker}" + (f", {source}" if source else "")
-        quote_block = (
-            f'<div style="{_SEP}">'
-            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
-            f'text-transform:uppercase;margin-bottom:5px;">Quote of the Day</div>'
-            f'<div style="font-size:12px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
-            + (f'<div style="margin-top:4px;font-size:10px;color:#6a7280;">{_esc(attr)}</div>' if speaker else "")
-            + f'</div>'
-        )
-
-    # Flex column — story block grows, the rest pins to the bottom
     return (
-        f'<div style="display:flex;flex-direction:column;height:100%;gap:0;">'
+        f'<div>'
         + story_block
         + watch_block
-        + market_block
-        + quote_block
         + f'</div>'
     )
 
@@ -638,7 +638,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
         f' &nbsp;·&nbsp; <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("condition","-"))}</span>'
     )
 
-    left_panel  = _render_left_panel(_meta.get("top_stocks_data") or None)
+    left_panel  = _render_left_panel(_meta.get("top_stocks_data") or None, _meta)
     right_panel = _render_right_panel(ordered, _meta)
 
     # Big date: "27 April 2026, Monday"
