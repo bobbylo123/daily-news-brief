@@ -578,39 +578,9 @@ def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
         + f'</div>'
     )
 
-    # ── 2. Key Events to Watch ───────────────────────────────────────────────
-    watch_items = brief_meta.get("key_events_to_watch") or []
-    watch_block = ""
-    if watch_items:
-        # Use a CSS grid with a fixed date column (100px) so date and event
-        # are always on the same row — date never wraps into the event column.
-        rows = []
-        for i, ev in enumerate(watch_items[:4]):
-            date  = _esc(ev.get("date", ""))
-            event = _esc(ev.get("event", ""))
-            border = "border-bottom:1px solid rgba(201,162,74,0.10);" if i < len(watch_items[:4]) - 1 else ""
-            rows.append(
-                # Date cell
-                f'<div style="padding:5px 8px 5px 0;{border}font-size:9.5px;font-weight:700;'
-                f'color:{GOLD};white-space:nowrap;line-height:1.4;">{date}</div>'
-                # Event cell
-                f'<div style="padding:5px 0;{border}font-size:11px;color:#ddd5bc;line-height:1.4;">{event}</div>'
-            )
-        watch_block = (
-            f'<div style="{_SEP}">'
-            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
-            f'text-transform:uppercase;margin-bottom:8px;">Key Events to Watch</div>'
-            f'<div style="display:grid;grid-template-columns:100px 1fr;align-items:start;">'
-            + "".join(rows)
-            + f'</div>'
-            + "".join(rows)
-            + f'</div>'
-        )
-
     return (
         f'<div>'
         + story_block
-        + watch_block
         + f'</div>'
     )
 
