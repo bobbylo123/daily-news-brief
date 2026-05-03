@@ -337,6 +337,12 @@ def fetch_daily_news(
         )
 
     items = submission.get("items", [])
+    # Defensive: model sometimes serialises the array as a JSON string.
+    if isinstance(items, str):
+        try:
+            items = json.loads(items)
+        except Exception:
+            pass
     if not isinstance(items, list) or len(items) != 3:
         raise ValueError(f"Expected 3 items in submission, got: {items!r}")
 

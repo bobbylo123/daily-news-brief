@@ -198,11 +198,12 @@ def main() -> int:
             print(f"[news] cached → {json_path}", flush=True)
         except Exception as fetch_err:
             print(f"[news] FETCH FAILED after retries: {fetch_err}", flush=True)
-            fallback = _most_recent_archive()
+            # Try today's own JSON first (in case this is a re-run of a partial failure).
+            fallback = json_path if json_path.exists() else _most_recent_archive()
             if fallback is None:
                 print("[news] no fallback archive available; aborting.", flush=True)
                 raise
-            print(f"[news] FALLBACK: re-using most recent archive {fallback.name}", flush=True)
+            print(f"[news] FALLBACK: re-using archive {fallback.name}", flush=True)
             items, brief_meta = _load_cached(fallback)
             brief_meta = dict(brief_meta or {})
             brief_meta["daily_note"] = (
