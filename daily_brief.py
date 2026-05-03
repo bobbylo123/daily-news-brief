@@ -75,8 +75,15 @@ def _embed_images(items: list[dict]) -> list[dict]:
     This makes images permanently visible in the HTML regardless of CDN
     hotlink-blocking — the image data lives inside the file itself.
     Images larger than 1.5 MB are skipped to keep the file size reasonable.
+
+    Key technique: we set the HTTP Referer header to the image's own domain.
+    Most CDN hotlink-protection checks only that the Referer comes from their
+    own site — spoofing it in this way bypasses 403s from Al Jazeera, AP,
+    Reuters, etc. without any third-party dependency.
     """
-    _HEADERS = {
+    import urllib.parse as _urlparse_mod
+
+    _BASE_HEADERS = {
         "User-Agent": (
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -84,6 +91,11 @@ def _embed_images(items: list[dict]) -> list[dict]:
         ),
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Dest": "image",
+        "Sec-Fetch-Mode": "no-cors",
+        "Sec-Fetch-Site": "same-origin",
+        "DNT": "1",
     }
     _MAX_BYTES = 1_500_000  # 1.5 MB
 
@@ -104,7 +116,13 @@ def _embed_images(items: list[dict]) -> list[dict]:
             continue
 
         try:
-            req = urllib.request.Request(img_url, headers=_HEADERS)
+            # Build per-request headers: Referer = image's own domain.
+            # This is the key bypass for Al Jazeera, AP dims, Reuters CDN etc.
+            parsed   = _urlparse_mod.urlparse(img_url)
+            referer  = f"{parsed.scheme}://{parsed.hostname}/"
+            headers  = {**_BASE_HEADERS, "Referer": referer}
+
+            req = urllib.request.Request(img_url, headers=headers)
             with urllib.request.urlopen(req, timeout=15) as resp:
                 # Verify server actually returned an image content-type.
                 srv_ctype = resp.headers.get_content_type() or ""

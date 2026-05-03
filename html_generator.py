@@ -174,11 +174,10 @@ def _render_perspectives(persp: list[dict[str, Any]]) -> str:
         rows.append(
             f'<tr style="background:{bg};">'
             f'<td style="{td_base}color:{NAVY};font-weight:bold;">{who}</td>'
-            f'<td style="{td_base}overflow:hidden;">'
-            f'<span style="display:inline-block;padding:3px 9px;border-radius:3px;'
-            f'background:rgba(201,162,74,0.13);color:{GOLD};font-size:11px;'
-            f'letter-spacing:0.5px;font-weight:bold;white-space:normal;max-width:100%;">'
-            f'{stance[:30] + ("…" if len(stance) > 30 else "")}</span></td>'
+            f'<td style="{td_base}">'
+            f'<span style="font-size:12px;font-style:italic;font-weight:600;'
+            f'color:{GOLD};letter-spacing:0.3px;font-family:Georgia,serif;">'
+            f'{stance[:40] + ("…" if len(stance) > 40 else "")}</span></td>'
             f'<td style="{td_base}color:{INK};font-style:italic;">&ldquo;{quote}&rdquo;{cite}</td>'
             f'</tr>'
         )
@@ -325,139 +324,216 @@ def _outlet_from_url(url: str) -> str:
 
 
 _SETUP_TYPE_COLORS = {
-    "FDA Decision":       ("#7c3aed", "rgba(124,58,237,0.18)"),   # purple
-    "Earnings Surprise":  ("#0ea5e9", "rgba(14,165,233,0.18)"),   # sky blue
-    "Short Squeeze":      ("#f97316", "rgba(249,115,22,0.18)"),   # orange
-    "Pre-Market Gapper":  ("#ec4899", "rgba(236,72,153,0.18)"),   # pink
-    "M&A Announcement":   ("#10b981", "rgba(16,185,129,0.18)"),   # emerald
-    "Analyst Upgrade":    ("#c9a24a", "rgba(201,162,74,0.18)"),   # gold
-    "Technical Breakout": ("#38bdf8", "rgba(56,189,248,0.18)"),   # light blue
+    "FDA Decision":       ("#a78bfa", "rgba(167,139,250,0.12)"),  # violet
+    "Earnings Surprise":  ("#38bdf8", "rgba(56,189,248,0.12)"),   # sky blue
+    "Short Squeeze":      ("#fb923c", "rgba(251,146,60,0.12)"),   # orange
+    "Pre-Market Gapper":  ("#f472b6", "rgba(244,114,182,0.12)"),  # pink
+    "M&A Announcement":   ("#34d399", "rgba(52,211,153,0.12)"),   # emerald
+    "Analyst Upgrade":    ("#c9a24a", "rgba(201,162,74,0.12)"),   # gold
+    "Technical Breakout": ("#67e8f9", "rgba(103,232,249,0.12)"),  # cyan
 }
 
 
 def _render_stock_card(stock: dict, idx: int) -> str:
-    """Render one stock pick card for the left panel."""
-    rank       = _esc(str(stock.get("rank", idx + 1)))
-    ticker     = _esc(stock.get("ticker", "—"))
-    company    = _esc(stock.get("company", ""))
-    price      = _esc(stock.get("last_price", ""))
-    gain       = _esc(stock.get("expected_gain_pct", ""))
-    setup_type = stock.get("setup_type", "")
-    catalyst   = _esc(stock.get("catalyst", ""))
-    technical  = _esc(stock.get("technical_summary", ""))
-    risk       = stock.get("risk_level", "Medium")
-    conf       = stock.get("confidence_level", "High")
+    """Compact beginner-friendly card: why it moves + entry / SL / TP / R:R."""
+    rank        = _esc(str(stock.get("rank", idx + 1)))
+    ticker      = _esc(stock.get("ticker", "—"))
+    company     = _esc(stock.get("company", ""))
+    price       = _esc(stock.get("last_price", ""))
+    gain        = _esc(stock.get("expected_gain_pct", ""))
+    setup_type  = stock.get("setup_type", "")
+    key_factors = _esc(stock.get("key_factors") or stock.get("catalyst", ""))
+    entry_price = _esc(stock.get("entry_price", ""))
+    stop_loss   = _esc(stock.get("stop_loss", ""))
+    take_profit = _esc(stock.get("take_profit", ""))
+    rr_ratio    = _esc(stock.get("risk_reward_ratio", ""))
+    technical   = _esc(stock.get("technical_summary", ""))
+    risk        = stock.get("risk_level", "High")
+    conf        = stock.get("confidence_level", "High")
 
     risk_colors = {
-        "Low":    ("rgba(74,222,128,0.15)", "#4ade80"),
-        "Medium": ("rgba(251,191,36,0.15)", "#fbbf24"),
-        "High":   ("rgba(248,113,113,0.15)", "#f87171"),
+        "Low":    ("rgba(74,222,128,0.10)", "#4ade80"),
+        "Medium": ("rgba(251,191,36,0.10)", "#fbbf24"),
+        "High":   ("rgba(248,113,113,0.10)", "#f87171"),
     }
     conf_colors = {
-        "Moderate":  ("rgba(148,163,184,0.15)", "#94a3b8"),
-        "High":      ("rgba(201,162,74,0.18)", "#c9a24a"),
-        "Very High": ("rgba(74,222,128,0.18)", "#4ade80"),
+        "Moderate":  ("rgba(148,163,184,0.10)", "#94a3b8"),
+        "High":      ("rgba(201,162,74,0.12)",  "#c9a24a"),
+        "Very High": ("rgba(74,222,128,0.12)",  "#4ade80"),
     }
-    r_bg, r_fg = risk_colors.get(risk, risk_colors["Medium"])
+    r_bg, r_fg = risk_colors.get(risk, risk_colors["High"])
     c_bg, c_fg = conf_colors.get(conf, conf_colors["High"])
-    s_fg, s_bg = _SETUP_TYPE_COLORS.get(setup_type, ("#c9a24a", "rgba(201,162,74,0.18)"))
+    s_fg, s_bg = _SETUP_TYPE_COLORS.get(setup_type, ("#c9a24a", "rgba(201,162,74,0.12)"))
 
-    border_top = "border-top:1px solid rgba(201,162,74,0.18);padding-top:10px;" if idx > 0 else ""
-    setup_badge = (
-        f'<span style="font-size:9px;padding:2px 8px;border-radius:3px;'
-        f'background:{s_bg};color:{s_fg};font-weight:bold;letter-spacing:0.5px;">'
-        f'{_esc(setup_type)}</span> '
+    sep = "border-top:1px solid rgba(201,162,74,0.13);padding-top:9px;margin-top:1px;" if idx > 0 else ""
+
+    # Setup badge — slim pill with coloured border only (no solid fill)
+    setup_html = (
+        f'<span style="font-size:9px;padding:1px 7px;border-radius:10px;'
+        f'border:1px solid {s_fg};color:{s_fg};font-weight:700;letter-spacing:0.3px;'
+        f'background:{s_bg};">{_esc(setup_type)}</span>'
     ) if setup_type else ""
 
-    return (
-        f'<div style="{border_top}margin-bottom:10px;">'
-        # Row 1: rank + ticker + gain (gain is large + bright green)
-        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">'
-        f'<div>'
-        f'<span style="font-size:10px;color:#8a8070;margin-right:4px;">#{rank}</span>'
-        f'<span style="font-size:16px;font-weight:bold;color:{GOLD};letter-spacing:0.5px;">{ticker}</span>'
-        f'</div>'
-        f'<span style="font-size:15px;font-weight:bold;color:#4ade80;letter-spacing:-0.5px;">{gain}</span>'
-        f'</div>'
-        # Row 2: company + price
-        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">'
-        f'<span style="font-size:10px;color:#8a8070;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{company}</span>'
-        f'<span style="font-size:11px;color:#c8bfa8;white-space:nowrap;">{price}</span>'
-        f'</div>'
-        # Setup type badge
-        f'<div style="margin-bottom:5px;">{setup_badge}</div>'
-        # Catalyst
-        f'<div style="font-size:11px;color:#ddd6c0;line-height:1.45;margin-bottom:4px;">'
-        f'<span style="color:{GOLD};font-size:10px;">&#9889;</span> {catalyst}'
-        f'</div>'
-        # Technical
-        f'<div style="font-size:10px;color:#8a8070;line-height:1.4;margin-bottom:6px;">'
-        f'&#9641; {technical}'
-        f'</div>'
-        # Badges: risk + confidence
-        f'<div style="display:flex;gap:5px;flex-wrap:wrap;">'
-        f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;'
-        f'background:{r_bg};color:{r_fg};font-weight:bold;letter-spacing:0.5px;">'
-        f'{_esc(risk)} Risk</span>'
-        f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;'
-        f'background:{c_bg};color:{c_fg};font-weight:bold;letter-spacing:0.5px;">'
-        f'{_esc(conf)}</span>'
-        f'</div>'
-        f'</div>'
-    )
+    # Entry / SL / TP trade row
+    trade_parts = []
+    if entry_price: trade_parts.append(f'<b style="color:#9ca3af;">Entry</b> {entry_price}')
+    if stop_loss:   trade_parts.append(f'<b style="color:#f87171;">SL</b> {stop_loss}')
+    if take_profit: trade_parts.append(f'<b style="color:#4ade80;">TP</b> {take_profit}')
+    trade_html = (
+        f'<div style="font-size:10px;color:#b8b0a0;line-height:1.7;margin:3px 0;">'
+        + ' &nbsp;·&nbsp; '.join(trade_parts)
+        + '</div>'
+    ) if trade_parts else ""
+
+    # R:R badge
+    rr_html = (
+        f'<span style="font-size:9px;padding:1px 7px;border-radius:10px;'
+        f'border:1px solid rgba(74,222,128,0.45);color:#4ade80;font-weight:700;">'
+        f'R:R {rr_ratio}</span>&nbsp;'
+    ) if rr_ratio else ""
+
+    return "".join([
+        f'<div style="{sep}margin-bottom:10px;">',
+        # Rank · ticker · gain%
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px;">',
+        f'<span><span style="font-size:10px;color:#6a7280;margin-right:3px;">#{rank}</span>'
+        f'<span style="font-size:15px;font-weight:700;color:{GOLD};">{ticker}</span></span>',
+        f'<span style="font-size:14px;font-weight:700;color:#4ade80;">{gain}</span>',
+        f'</div>',
+        # Company · price
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">',
+        f'<span style="font-size:10px;color:#6a7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72%;">{company}</span>',
+        f'<span style="font-size:10px;color:#9ca3af;">{price}</span>',
+        f'</div>',
+        # Setup badge
+        (f'<div style="margin-bottom:4px;">{setup_html}</div>' if setup_html else ""),
+        # Why it moves (plain English for beginners)
+        (f'<div style="font-size:11px;color:#ddd5bc;line-height:1.5;margin-bottom:3px;">{key_factors}</div>' if key_factors else ""),
+        # Entry / SL / TP
+        trade_html,
+        # Technicals (very compact)
+        (f'<div style="font-size:9px;color:#6a7280;line-height:1.4;margin-bottom:3px;">{technical}</div>' if technical else ""),
+        # R:R + risk + confidence
+        f'<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:2px;">',
+        rr_html,
+        f'<span style="font-size:9px;padding:1px 7px;border-radius:10px;'
+        f'border:1px solid {r_fg};color:{r_fg};font-weight:700;background:{r_bg};">{_esc(risk)} Risk</span>',
+        f'<span style="font-size:9px;padding:1px 7px;border-radius:10px;'
+        f'border:1px solid {c_fg};color:{c_fg};font-weight:700;background:{c_bg};">{_esc(conf)}</span>',
+        f'</div>',
+        f'</div>',
+    ])
 
 
-def _render_left_panel(quote_of_day: dict, top_stocks_data: dict | None) -> str:
-    parts = []
-
-    if quote_of_day and quote_of_day.get("quote"):
-        quote = _esc(quote_of_day.get("quote", ""))
-        speaker = _esc(quote_of_day.get("speaker", ""))
-        source = _esc(quote_of_day.get("source", ""))
-        attribution = f"— {speaker}" + (f", {source}" if source else "")
-        parts.append(
-            f'<div style="margin-bottom:14px;padding-bottom:12px;">'
-            f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:7px;">Quote of the Day</div>'
-            f'<div style="font-size:13px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
-            + (f'<div style="margin-top:5px;font-size:11px;color:#8a8070;letter-spacing:0.3px;">{_esc(attribution)}</div>' if speaker else "")
-            + '</div>'
-        )
-
-    stocks = (top_stocks_data or {}).get("stocks") or []
+def _render_left_panel(top_stocks_data: dict | None) -> str:
+    """Left header panel: purely the Top 5 high-upside stock picks."""
+    stocks       = (top_stocks_data or {}).get("stocks") or []
     session_aest = _esc((top_stocks_data or {}).get("session_aest", ""))
 
-    if stocks:
-        cards = "".join(_render_stock_card(s, i) for i, s in enumerate(stocks))
-        session_line = (
-            f'<div style="font-size:9px;color:#8a8070;margin-bottom:10px;line-height:1.4;">'
-            f'US session (AEST): {session_aest}'
-            f'</div>'
-            if session_aest else ""
-        )
-        parts.append(
-            f'<div>'
-            f'<div style="border-top:1px solid rgba(201,162,74,0.4);margin:0 0 10px 0;"></div>'
-            f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;'
-            f'text-transform:uppercase;margin-bottom:2px;">Top 5 High-Upside Picks &middot; US Session</div>'
-            f'<div style="font-size:9px;color:#4ade80;letter-spacing:1px;margin-bottom:6px;">Target: +30% to +80%+ intraday</div>'
-            + session_line
-            + cards
-            + f'<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(201,162,74,0.12);'
-            f'font-size:9px;color:#5b6577;line-height:1.4;font-style:italic;">'
-            f'&#9888; Informational only. Not financial advice. High-upside plays carry extreme risk. '
-            f'Past performance does not guarantee future results.</div>'
-            f'</div>'
-        )
-    else:
-        parts.append(
-            f'<div style="border-top:1px solid rgba(201,162,74,0.4);margin:0 0 12px 0;"></div>'
+    if not stocks:
+        return (
             f'<div style="color:#8a8070;font-size:12px;font-style:italic;padding:8px 0;">'
             f'Stock picks unavailable today.</div>'
         )
 
-    if not parts:
-        return '<div style="color:#8a8070;font-size:13px;font-style:italic;">Data unavailable.</div>'
-    return "".join(parts)
+    session_line = (
+        f'<div style="font-size:9px;color:#6a7280;margin-bottom:8px;line-height:1.4;">'
+        f'US session (AEST): {session_aest}</div>'
+    ) if session_aest else ""
+
+    cards = "".join(_render_stock_card(s, i) for i, s in enumerate(stocks))
+
+    return "".join([
+        f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+        f'text-transform:uppercase;margin-bottom:2px;">Top 5 High-Upside Picks &middot; US</div>',
+        f'<div style="font-size:9px;color:#4ade80;letter-spacing:0.8px;margin-bottom:7px;">'
+        f'Target: +30% to +80%+ intraday gain</div>',
+        session_line,
+        cards,
+        f'<div style="margin-top:6px;padding-top:5px;border-top:1px solid rgba(201,162,74,0.1);'
+        f'font-size:8.5px;color:#4a5568;line-height:1.4;font-style:italic;">'
+        f'&#9888; Informational only. Not financial advice. High-upside plays carry extreme risk.</div>',
+    ])
+
+
+def _render_right_panel(items: list[dict[str, Any]], brief_meta: dict) -> str:
+    """Right header panel: At a Glance + Market Snapshot + Quote of the Day."""
+
+    # ── 1. Edition index ─────────────────────────────────────────────────────
+    SECTION_NUMS = ["01", "02", "03"]
+    index_rows = []
+    for i, it in enumerate(items):
+        num         = SECTION_NUMS[i] if i < len(SECTION_NUMS) else f"0{i+1}"
+        cat         = _esc((it.get("category") or "").upper())
+        lead        = it.get("lead_source") or {}
+        source_name = _esc(lead.get("name", ""))
+        title       = _esc(it.get("title", ""))
+        read_time   = _read_time(it)
+        border      = "border-bottom:1px solid rgba(201,162,74,0.13);" if i < len(items) - 1 else ""
+        index_rows.append(
+            f'<div style="display:flex;gap:11px;padding:8px 0;{border}">'
+            f'<div style="font-family:Georgia,serif;font-size:20px;font-weight:bold;'
+            f'color:rgba(201,162,74,0.28);line-height:1;flex-shrink:0;padding-top:3px;">{num}</div>'
+            f'<div style="min-width:0;">'
+            f'<div style="font-size:10px;letter-spacing:2px;color:{GOLD};text-transform:uppercase;margin-bottom:2px;">{cat}</div>'
+            f'<div style="font-size:12.5px;color:#eae4d4;line-height:1.4;">{title}</div>'
+            + (f'<div style="font-size:10px;color:#6a7280;margin-top:2px;">{source_name} &middot; {read_time}</div>'
+               if source_name else f'<div style="font-size:10px;color:#6a7280;margin-top:2px;">{read_time}</div>')
+            + f'</div></div>'
+        )
+
+    # ── 2. Market snapshot ───────────────────────────────────────────────────
+    market_nums    = brief_meta.get("market_numbers") or []
+    market_section = ""
+    if market_nums:
+        cells = []
+        for mn in market_nums[:6]:
+            label     = _esc(mn.get("label", ""))
+            value     = _esc(_clean_mkt_value(mn.get("value", "")))
+            change    = _esc(_clean_mkt_change(mn.get("change", "")))
+            chg_color = "#4ade80" if "+" in change else "#f87171" if "-" in change else "#94a3b8"
+            cells.append(
+                f'<div style="padding:3px 0;border-bottom:1px solid rgba(201,162,74,0.07);">'
+                f'<div style="font-size:9px;color:#6a7280;letter-spacing:0.3px;">{label}</div>'
+                f'<div style="display:flex;align-items:baseline;gap:5px;">'
+                f'<span style="font-size:11px;font-weight:600;color:#ddd5bc;">{value}</span>'
+                f'<span style="font-size:10px;color:{chg_color};">{change}</span>'
+                f'</div></div>'
+            )
+        market_section = (
+            f'<div style="border-top:1px solid rgba(201,162,74,0.26);margin-top:9px;padding-top:8px;">'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+            f'text-transform:uppercase;margin-bottom:6px;">Market Snapshot</div>'
+            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px;">'
+            + "".join(cells)
+            + f'</div></div>'
+        )
+
+    # ── 3. Quote of the Day ──────────────────────────────────────────────────
+    qod           = brief_meta.get("quote_of_day") or {}
+    quote_section = ""
+    if qod and qod.get("quote"):
+        quote   = _esc(qod.get("quote", ""))
+        speaker = _esc(qod.get("speaker", ""))
+        source  = _esc(qod.get("source", ""))
+        attr    = f"— {speaker}" + (f", {source}" if source else "")
+        quote_section = (
+            f'<div style="border-top:1px solid rgba(201,162,74,0.26);margin-top:9px;padding-top:8px;">'
+            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+            f'text-transform:uppercase;margin-bottom:5px;">Quote of the Day</div>'
+            f'<div style="font-size:12px;color:#f1ecdf;line-height:1.55;font-style:italic;">&ldquo;{quote}&rdquo;</div>'
+            + (f'<div style="margin-top:4px;font-size:10px;color:#6a7280;">{_esc(attr)}</div>' if speaker else "")
+            + f'</div>'
+        )
+
+    return "".join([
+        f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};font-weight:700;'
+        f'text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.26);'
+        f'padding-bottom:7px;">At a Glance</div>',
+        "\n".join(index_rows),
+        market_section,
+        quote_section,
+    ])
 
 
 def _render_preview(items: list[dict[str, Any]]) -> str:
@@ -473,32 +549,6 @@ def _render_preview(items: list[dict[str, Any]]) -> str:
         )
     if rows:
         rows[-1] = rows[-1].replace("border-bottom:1px solid rgba(201,162,74,0.22);", "")
-    return "\n".join(rows)
-
-
-def _render_edition_index(items: list[dict[str, Any]]) -> str:
-    """Right-side newspaper-style 'In This Edition' index (WSJ/FT convention)."""
-    SECTION_NUMS = ["01", "02", "03"]
-    rows = []
-    for i, it in enumerate(items):
-        num = SECTION_NUMS[i] if i < len(SECTION_NUMS) else f"0{i+1}"
-        cat = _esc((it.get("category") or "").upper())
-        lead = it.get("lead_source") or {}
-        source_name = _esc(lead.get("name", ""))
-        title = _esc(it.get("title", ""))
-        border = "border-bottom:1px solid rgba(201,162,74,0.18);" if i < len(items) - 1 else ""
-        rows.append(
-            f'<div style="display:flex;gap:12px;padding:10px 0;{border}">'
-            f'<div style="font-family:Georgia,serif;font-size:22px;font-weight:bold;'
-            f'color:rgba(201,162,74,0.35);line-height:1;flex-shrink:0;padding-top:2px;">{num}</div>'
-            f'<div>'
-            f'<div style="font-size:10px;letter-spacing:2.5px;color:{GOLD};'
-            f'text-transform:uppercase;margin-bottom:3px;">{cat}</div>'
-            f'<div style="font-size:13px;color:#eae4d4;line-height:1.4;">{title}</div>'
-            + (f'<div style="font-size:11px;color:#8a8070;margin-top:3px;letter-spacing:0.5px;">'
-               f'{source_name}</div>' if source_name else "")
-            + f'</div></div>'
-        )
     return "\n".join(rows)
 
 
@@ -547,10 +597,8 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
         f' &nbsp;·&nbsp; <span style="color:{GOLD_SOFT};font-weight:600;">{_esc(weather.get("condition","-"))}</span>'
     )
 
-    left_panel = _render_left_panel(
-        _meta.get("quote_of_day") or {},
-        _meta.get("top_stocks_data") or None,
-    )
+    left_panel  = _render_left_panel(_meta.get("top_stocks_data") or None)
+    right_panel = _render_right_panel(ordered, _meta)
 
     # Big date: "27 April 2026, Monday"
     big_date = f"{now_aest.day} {now_aest.strftime('%B %Y, %A')}"
@@ -698,8 +746,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
           {left_panel}
         </div>
         <div class="edition-index">
-          <div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:4px;border-bottom:1px solid rgba(201,162,74,0.3);padding-bottom:8px;">At a Glance</div>
-          {_render_edition_index(ordered)}
+          {right_panel}
         </div>
       </div>
     </div>

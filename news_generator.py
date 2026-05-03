@@ -436,15 +436,22 @@ Execute this research checklist:
 7. For each shortlisted candidate: search "[TICKER] news {us_date_str}" to confirm catalyst.
 8. Shortlist at least 8–10 candidates, then select the top 5 by expected intraday gain %.
 
-For every final pick, confirm:
-  • Ticker and exact company name
-  • Specific catalyst (FDA, earnings beat, short squeeze, M&A, gapper, analyst upgrade)
-  • Last close price or pre-market price
-  • Expected intraday gain range (MUST be ≥ +30%)
-  • Setup type: one of FDA Decision, Earnings Surprise, Short Squeeze, Pre-Market Gapper,
+For every final pick, confirm ALL of the following:
+  • ticker + company name + sector
+  • setup_type: one of FDA Decision, Earnings Surprise, Short Squeeze, Pre-Market Gapper,
     M&A Announcement, Analyst Upgrade, Technical Breakout
-  • 2–3 supporting technical indicators (RSI, volume vs avg, MA position, short float %)
-  • Risk level: High for binary events (FDA), Medium for earnings/squeeze plays"""
+  • last_price: last close or pre-market price
+  • expected_gain_pct: MUST be ≥ +30%, e.g. "+40–80%"
+  • key_factors: 1-2 plain-English sentences for a trading BEGINNER explaining the single
+    most powerful driver. No jargon. E.g. "53%% of this stock is sold short — when Q1
+    earnings beat on May 6, short-sellers must buy back fast, sending price rocketing."
+  • entry_price: suggested buy range e.g. "$8.00–$8.50"
+  • stop_loss: e.g. "$7.20 (−12%%)" — where to exit if wrong
+  • take_profit: e.g. "$13–$16 (+60–95%%)" — price target
+  • risk_reward_ratio: e.g. "1:5" (risk $1 to make $5)
+  • technical_summary: 2-3 key signals (short float %%, RSI, volume vs avg, MA position)
+  • risk_level: High for FDA binary events, Medium for squeeze/earnings, Low for M&A
+  • confidence_level: Moderate / High / Very High"""
 
 TOP_STOCKS_TOOL = {
     "name": "submit_top_stocks",
@@ -474,7 +481,8 @@ TOP_STOCKS_TOOL = {
                     "required": [
                         "rank", "ticker", "company", "sector",
                         "last_price", "setup_type", "expected_gain_pct",
-                        "catalyst", "technical_summary",
+                        "key_factors", "entry_price", "stop_loss", "take_profit",
+                        "risk_reward_ratio", "technical_summary",
                         "risk_level", "confidence_level",
                     ],
                     "properties": {
@@ -482,12 +490,12 @@ TOP_STOCKS_TOOL = {
                             "type": "integer", "minimum": 1, "maximum": 5,
                             "description": "1 = highest conviction",
                         },
-                        "ticker": {"type": "string", "description": "e.g. NVDA"},
+                        "ticker": {"type": "string", "description": "e.g. GRPN"},
                         "company": {"type": "string", "description": "Full company name"},
                         "sector": {"type": "string", "description": "e.g. Technology, Healthcare"},
                         "last_price": {
                             "type": "string",
-                            "description": "Last close or pre-market price e.g. $875.50",
+                            "description": "Last close or pre-market price e.g. $8.20",
                         },
                         "setup_type": {
                             "type": "string",
@@ -506,13 +514,34 @@ TOP_STOCKS_TOOL = {
                             "type": "string",
                             "description": "Expected intraday gain range — MUST be ≥ +30%, e.g. +35–55% or +40–80%",
                         },
-                        "catalyst": {
+                        "key_factors": {
                             "type": "string",
-                            "description": "Specific catalyst driving today's explosive move (40-80 words)",
+                            "description": (
+                                "1-2 sentences in plain English for a beginner explaining the single most powerful reason "
+                                "this stock will move today. No jargon. E.g. '53% of shares are sold short — if good news "
+                                "hits, short sellers must buy back fast, sending the price rocketing. Q1 earnings on May 6 "
+                                "is that trigger.'"
+                            ),
+                        },
+                        "entry_price": {
+                            "type": "string",
+                            "description": "Suggested entry price range e.g. '$8.00–$8.50' or 'Pre-market ~$8.20'",
+                        },
+                        "stop_loss": {
+                            "type": "string",
+                            "description": "Stop-loss level with percentage below entry e.g. '$7.20 (−12%)'",
+                        },
+                        "take_profit": {
+                            "type": "string",
+                            "description": "Take-profit target with percentage above entry e.g. '$13–$16 (+60–95%)'",
+                        },
+                        "risk_reward_ratio": {
+                            "type": "string",
+                            "description": "Risk-to-reward ratio e.g. '1:5' meaning risk $1 to potentially make $5",
                         },
                         "technical_summary": {
                             "type": "string",
-                            "description": "2-3 key signals e.g. RSI 72, short float 38%, volume 420% avg, above 50-day MA",
+                            "description": "2-3 key signals e.g. short float 53%, RSI 72, volume 420% avg",
                         },
                         "risk_level": {
                             "type": "string",
