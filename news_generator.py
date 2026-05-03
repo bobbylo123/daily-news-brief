@@ -489,39 +489,83 @@ TOP_STOCKS_TOOL = {
 }
 
 
+def _next_us_trading_date(now_aest: datetime, aest_tz, edt_tz) -> "date":
+    """Return the correct US trading date to use for stock picks.
+
+    Rules (all times AEST, weekday 0=Mon … 6=Sun):
+    • Friday / Saturday / Sunday AEST  → picks for the upcoming MONDAY EDT session
+    • Monday – Thursday AEST           → picks for the NEXT EDT day's session
+      (At 9 am AEST the current EDT clock reads ~7 pm the day before, so the
+       same-EDT-day session has already closed — always advance by 1 EDT day.)
+    Weekends in the resulting EDT date are skipped forward to Monday.
+    """
+    from datetime import timedelta, time as _time
+    aest_weekday = now_aest.weekday()          # 0=Mon … 6=Sun
+    edt_date     = now_aest.astimezone(edt_tz).date()
+
+    if aest_weekday in (4, 5, 6):              # Fri / Sat / Sun AEST → Monday EDT
+        days_to_monday = (7 - edt_date.weekday()) % 7
+        if days_to_monday == 0:
+            days_to_monday = 7
+        target = edt_date + timedelta(days=days_to_monday)
+    else:                                       # Mon–Thu AEST → next EDT calendar day
+        target = edt_date + timedelta(days=1)
+        while target.weekday() in (5, 6):      # skip EDT weekend (safety)
+            target += timedelta(days=1)
+
+    return target
+
+
 def fetch_top_stocks(
     model: str = "claude-sonnet-4-6",
     max_searches: int = 18,
 ) -> dict[str, Any]:
-    """Identify today's top 5 US intraday stock picks via Claude + web_search.
+    """Identify the top 5 US intraday stock picks for the next US trading session.
+
+    Session mapping (AEST brief day → target EDT session):
+      Mon–Thu AEST  →  same-name EDT day (next EDT day after 9 am AEST)
+      Fri/Sat/Sun AEST  →  upcoming Monday EDT session
 
     Returns a dict with keys: stocks (list), session_date_us, session_aest.
     Raises on unrecoverable failure so the caller can fall back gracefully.
     """
-    client = _client()
-    aest = pytz.timezone("Australia/Brisbane")
-    edt  = pytz.timezone("America/New_York")
+    from datetime import timedelta, time as _time
+    client   = _client()
+    aest     = pytz.timezone("Australia/Brisbane")
+    edt      = pytz.timezone("America/New_York")
     now_aest = datetime.now(aest)
 
-    # Build US session window expressed in AEST for the user's timezone.
-    from datetime import time as _time, date as _date
-    us_today = now_aest.astimezone(edt).date()
-    us_open  = edt.localize(datetime.combine(us_today, _time(9, 30)))
-    us_close = edt.localize(datetime.combine(us_today, _time(16, 0)))
+    # ── Determine target US trading date ──────────────────────────────────────
+    target_us_date = _next_us_trading_date(now_aest, aest, edt)
+
+    us_open  = edt.localize(datetime.combine(target_us_date, _time(9, 30)))
+    us_close = edt.localize(datetime.combine(target_us_date, _time(16, 0)))
     aest_open  = us_open.astimezone(aest)
     aest_close = us_close.astimezone(aest)
 
-    date_str       = now_aest.strftime("%A, %d %B %Y")
-    us_date_str    = us_open.strftime("%A, %d %B %Y")
-    aest_open_str  = aest_open.strftime("%I:%M %p")
-    aest_close_str = aest_close.strftime("%I:%M %p")
-    # Date label(s) for AEST window (may span midnight)
+    # ── Build human-readable strings ─────────────────────────────────────────
+    date_str       = now_aest.strftime("%A, %d %B %Y")          # brief publication date
+    us_date_str    = us_open.strftime("%A, %d %B %Y")           # target trading date (EDT)
+    aest_open_str  = aest_open.strftime("%-I:%M %p")
+    aest_close_str = aest_close.strftime("%-I:%M %p")
     if aest_open.date() == aest_close.date():
-        aest_dates_str = aest_open.strftime("%a %d %b")
+        aest_dates_str = aest_open.strftime("%a %-d %b")
     else:
         aest_dates_str = (
-            f"{aest_open.strftime('%a %d %b')} – {aest_close.strftime('%a %d %b')}"
+            f"{aest_open.strftime('%a %-d %b')} – {aest_close.strftime('%a %-d %b')}"
         )
+
+    # Extra context for weekend / Friday briefs so Claude searches correctly
+    is_weekend_brief = now_aest.weekday() in (4, 5, 6)
+    if is_weekend_brief:
+        weekend_note = (
+            f"\nNOTE: This brief is published on {now_aest.strftime('%A')} AEST. "
+            f"The US market is CLOSED until Monday. Research catalysts that will "
+            f"drive Monday's opening — weekend news, pre-market futures, upcoming "
+            f"earnings on Monday, analyst notes released over the weekend."
+        )
+    else:
+        weekend_note = ""
 
     prompt = STOCK_USER_PROMPT_TEMPLATE.format(
         date_str=date_str,
@@ -529,7 +573,7 @@ def fetch_top_stocks(
         aest_open_str=aest_open_str,
         aest_close_str=aest_close_str,
         aest_dates_str=aest_dates_str,
-    )
+    ) + weekend_note
 
     backoff_schedule = [60, 90, 120, 180, 240, 300]
     last_err: Exception | None = None
