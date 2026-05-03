@@ -369,6 +369,225 @@ def _normalise(item: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
+# ---------------------------------------------------------------------------
+# Top-5 US intraday stock picks
+# ---------------------------------------------------------------------------
+
+STOCK_SYSTEM_PROMPT = """You are a professional US equity quantitative analyst
+specialising in identifying high-conviction intraday trading opportunities on NYSE
+and NASDAQ. Your sole task is to identify the 5 US stocks most likely to make a
+meaningful intraday gain during TODAY's regular session (9:30 am – 4:00 pm EDT).
+
+Research methodology — follow every step:
+1. CATALYST SCAN  : Search for today's US earnings releases, FDA decisions, analyst
+   upgrades/initiations, M&A announcements, and macro data reports that move sectors.
+2. PRE-MARKET     : Search for pre-market top gainers and the reasons behind each move.
+3. TECHNICALS     : For shortlisted candidates check RSI, MACD, 50-day and 200-day
+   MA relationship, Bollinger Band position, and volume vs. 20-day average.
+4. OPTIONS FLOW   : Unusual call-options buying (especially same-day expiry or weekly)
+   is a strong signal of institutional conviction for an intraday move.
+5. SHORT SQUEEZE  : High short-interest stocks with a fresh positive catalyst can move
+   explosively intraday — flag these explicitly.
+
+Selection rules (non-negotiable):
+* US-listed stocks ONLY (NYSE or NASDAQ). No OTC, no crypto, no ETFs.
+* The expected gain must materialise WITHIN today's single session — NOT over days/weeks.
+* Rank the final 5 by probability-weighted expected intraday gain, highest first.
+* Every pick must have at least one concrete, verifiable catalyst found via web_search.
+* This output is for informational/educational purposes ONLY. It is NOT investment advice."""
+
+STOCK_USER_PROMPT_TEMPLATE = """Today is {date_str} (Brisbane/AEST).
+The US regular trading session is {us_date_str}: 9:30 am – 4:00 pm EDT
+(= {aest_open_str} – {aest_close_str} AEST on {aest_dates_str}).
+
+Conduct thorough research using web_search, then call `submit_top_stocks` ONCE with
+your top 5 picks ranked from highest to lowest probability of intraday gain.
+
+Research checklist:
+1. Search "US earnings today {us_date_str}" — identify pre/post-market releases.
+2. Search "stock market movers today {us_date_str}" and "pre-market gainers".
+3. For each strong candidate: search "[TICKER] technical analysis {us_date_str}".
+4. Search "unusual options activity today" for institutional flow signals.
+5. Shortlist at least 10 candidates, then select the best 5 by conviction level.
+6. For every final pick: confirm the ticker, last close price, specific catalyst,
+   two measurable technical indicators, and your expected intraday gain range."""
+
+TOP_STOCKS_TOOL = {
+    "name": "submit_top_stocks",
+    "description": (
+        "Submit the final ranked list of the top 5 US intraday stock picks. "
+        "Call this exactly once after all research is complete."
+    ),
+    "input_schema": {
+        "type": "object",
+        "required": ["session_date_us", "session_aest", "stocks"],
+        "properties": {
+            "session_date_us": {
+                "type": "string",
+                "description": "US session date string e.g. 'Monday, 4 May 2026'",
+            },
+            "session_aest": {
+                "type": "string",
+                "description": "AEST session window e.g. '11:30 pm Mon 4 May – 6:00 am Tue 5 May'",
+            },
+            "stocks": {
+                "type": "array",
+                "minItems": 5,
+                "maxItems": 5,
+                "description": "Top 5 picks, ranked #1 (highest conviction) to #5.",
+                "items": {
+                    "type": "object",
+                    "required": [
+                        "rank", "ticker", "company", "sector",
+                        "last_price", "expected_gain_pct",
+                        "catalyst", "technical_summary",
+                        "risk_level", "confidence_level",
+                    ],
+                    "properties": {
+                        "rank": {
+                            "type": "integer", "minimum": 1, "maximum": 5,
+                            "description": "1 = highest conviction",
+                        },
+                        "ticker": {"type": "string", "description": "e.g. NVDA"},
+                        "company": {"type": "string", "description": "Full company name"},
+                        "sector": {"type": "string", "description": "e.g. Technology, Healthcare"},
+                        "last_price": {
+                            "type": "string",
+                            "description": "Last close or pre-market price e.g. $875.50",
+                        },
+                        "expected_gain_pct": {
+                            "type": "string",
+                            "description": "Expected intraday gain range e.g. +2–4%",
+                        },
+                        "catalyst": {
+                            "type": "string",
+                            "description": "Primary catalyst driving today's move (40-80 words)",
+                        },
+                        "technical_summary": {
+                            "type": "string",
+                            "description": "2-3 key technical indicators e.g. RSI 62, above 50-day MA, volume 180% avg",
+                        },
+                        "risk_level": {
+                            "type": "string",
+                            "enum": ["Low", "Medium", "High"],
+                        },
+                        "confidence_level": {
+                            "type": "string",
+                            "enum": ["Moderate", "High", "Very High"],
+                        },
+                    },
+                },
+            },
+        },
+    },
+}
+
+
+def fetch_top_stocks(
+    model: str = "claude-sonnet-4-6",
+    max_searches: int = 18,
+) -> dict[str, Any]:
+    """Identify today's top 5 US intraday stock picks via Claude + web_search.
+
+    Returns a dict with keys: stocks (list), session_date_us, session_aest.
+    Raises on unrecoverable failure so the caller can fall back gracefully.
+    """
+    client = _client()
+    aest = pytz.timezone("Australia/Brisbane")
+    edt  = pytz.timezone("America/New_York")
+    now_aest = datetime.now(aest)
+
+    # Build US session window expressed in AEST for the user's timezone.
+    from datetime import time as _time, date as _date
+    us_today = now_aest.astimezone(edt).date()
+    us_open  = edt.localize(datetime.combine(us_today, _time(9, 30)))
+    us_close = edt.localize(datetime.combine(us_today, _time(16, 0)))
+    aest_open  = us_open.astimezone(aest)
+    aest_close = us_close.astimezone(aest)
+
+    date_str       = now_aest.strftime("%A, %d %B %Y")
+    us_date_str    = us_open.strftime("%A, %d %B %Y")
+    aest_open_str  = aest_open.strftime("%I:%M %p")
+    aest_close_str = aest_close.strftime("%I:%M %p")
+    # Date label(s) for AEST window (may span midnight)
+    if aest_open.date() == aest_close.date():
+        aest_dates_str = aest_open.strftime("%a %d %b")
+    else:
+        aest_dates_str = (
+            f"{aest_open.strftime('%a %d %b')} – {aest_close.strftime('%a %d %b')}"
+        )
+
+    prompt = STOCK_USER_PROMPT_TEMPLATE.format(
+        date_str=date_str,
+        us_date_str=us_date_str,
+        aest_open_str=aest_open_str,
+        aest_close_str=aest_close_str,
+        aest_dates_str=aest_dates_str,
+    )
+
+    backoff_schedule = [60, 90, 120, 180, 240, 300]
+    last_err: Exception | None = None
+    message = None
+    for attempt in range(len(backoff_schedule) + 1):
+        try:
+            message = client.messages.create(
+                model=model,
+                max_tokens=10000,
+                system=STOCK_SYSTEM_PROMPT,
+                tools=[
+                    {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                        "max_uses": max_searches,
+                    },
+                    TOP_STOCKS_TOOL,
+                ],
+                tool_choice={"type": "auto"},
+                messages=[{"role": "user", "content": prompt}],
+            )
+            break
+        except anthropic.RateLimitError as e:
+            last_err = e
+            if attempt >= len(backoff_schedule):
+                raise
+            wait = backoff_schedule[attempt]
+            print(f"[stocks] rate-limited; sleeping {wait}s…", flush=True)
+            time.sleep(wait)
+        except (anthropic.APIConnectionError, anthropic.APIStatusError) as e:
+            last_err = e
+            if attempt >= len(backoff_schedule):
+                raise
+            wait = min(60, backoff_schedule[attempt])
+            print(f"[stocks] API error {type(e).__name__}; sleeping {wait}s…", flush=True)
+            time.sleep(wait)
+
+    if message is None:
+        raise last_err or RuntimeError("fetch_top_stocks: no response from Claude")
+
+    submission = None
+    for block in message.content:
+        if (
+            getattr(block, "type", None) == "tool_use"
+            and getattr(block, "name", "") == "submit_top_stocks"
+        ):
+            submission = block.input
+            break
+
+    if submission is None:
+        raise RuntimeError("fetch_top_stocks: model did not call submit_top_stocks")
+
+    stocks = submission.get("stocks") or []
+    stocks.sort(key=lambda s: s.get("rank", 99))
+    return {
+        "stocks": stocks,
+        "session_date_us": submission.get("session_date_us", us_date_str),
+        "session_aest": submission.get(
+            "session_aest",
+            f"{aest_open_str} – {aest_close_str} AEST {aest_dates_str}",
+        ),
+    }
+
+
 if __name__ == "__main__":
     items = fetch_daily_news()
     json.dump(items, sys.stdout, indent=2, ensure_ascii=False)

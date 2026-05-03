@@ -324,7 +324,71 @@ def _outlet_from_url(url: str) -> str:
         return "source"
 
 
-def _render_left_panel(quote_of_day: dict, market_numbers: list) -> str:
+def _render_stock_card(stock: dict, idx: int) -> str:
+    """Render one stock pick card for the left panel."""
+    rank      = _esc(str(stock.get("rank", idx + 1)))
+    ticker    = _esc(stock.get("ticker", "—"))
+    company   = _esc(stock.get("company", ""))
+    sector    = _esc(stock.get("sector", ""))
+    price     = _esc(stock.get("last_price", ""))
+    gain      = _esc(stock.get("expected_gain_pct", ""))
+    catalyst  = _esc(stock.get("catalyst", ""))
+    technical = _esc(stock.get("technical_summary", ""))
+    risk      = stock.get("risk_level", "Medium")
+    conf      = stock.get("confidence_level", "High")
+
+    risk_colors = {
+        "Low":    ("rgba(74,222,128,0.15)", "#4ade80"),
+        "Medium": ("rgba(251,191,36,0.15)", "#fbbf24"),
+        "High":   ("rgba(248,113,113,0.15)", "#f87171"),
+    }
+    conf_colors = {
+        "Moderate":  ("rgba(148,163,184,0.15)", "#94a3b8"),
+        "High":      ("rgba(201,162,74,0.18)", "#c9a24a"),
+        "Very High": ("rgba(74,222,128,0.18)", "#4ade80"),
+    }
+    r_bg, r_fg = risk_colors.get(risk, risk_colors["Medium"])
+    c_bg, c_fg = conf_colors.get(conf, conf_colors["High"])
+
+    border_top = "border-top:1px solid rgba(201,162,74,0.18);padding-top:10px;" if idx > 0 else ""
+
+    return (
+        f'<div style="{border_top}margin-bottom:10px;">'
+        # Row 1: rank + ticker + gain
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">'
+        f'<div>'
+        f'<span style="font-size:10px;color:#8a8070;margin-right:4px;">#{rank}</span>'
+        f'<span style="font-size:15px;font-weight:bold;color:{GOLD};letter-spacing:0.5px;">{ticker}</span>'
+        f'</div>'
+        f'<span style="font-size:13px;font-weight:bold;color:#4ade80;">{gain}</span>'
+        f'</div>'
+        # Row 2: company + sector + price
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'
+        f'<span style="font-size:10px;color:#8a8070;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{company}</span>'
+        f'<span style="font-size:11px;color:#c8bfa8;white-space:nowrap;">{price}</span>'
+        f'</div>'
+        # Catalyst
+        f'<div style="font-size:11px;color:#ddd6c0;line-height:1.45;margin-bottom:4px;">'
+        f'<span style="color:{GOLD};font-size:10px;">&#9889;</span> {catalyst}'
+        f'</div>'
+        # Technical
+        f'<div style="font-size:10px;color:#8a8070;line-height:1.4;margin-bottom:6px;">'
+        f'&#9641; {technical}'
+        f'</div>'
+        # Badges: risk + confidence
+        f'<div style="display:flex;gap:5px;">'
+        f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;'
+        f'background:{r_bg};color:{r_fg};font-weight:bold;letter-spacing:0.5px;">'
+        f'{_esc(risk)} Risk</span>'
+        f'<span style="font-size:9px;padding:2px 7px;border-radius:3px;'
+        f'background:{c_bg};color:{c_fg};font-weight:bold;letter-spacing:0.5px;">'
+        f'{_esc(conf)}</span>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def _render_left_panel(quote_of_day: dict, top_stocks_data: dict | None) -> str:
     parts = []
 
     if quote_of_day and quote_of_day.get("quote"):
@@ -340,32 +404,35 @@ def _render_left_panel(quote_of_day: dict, market_numbers: list) -> str:
             + '</div>'
         )
 
-    if market_numbers:
-        rows = []
-        for m in market_numbers:
-            label = _esc(m.get("label", ""))
-            value = _esc(_clean_mkt_value(m.get("value", "")))
-            change = _clean_mkt_change(m.get("change", ""))
-            if change.startswith("+"):
-                c_color = "#4ade80"
-            elif change.startswith("-"):
-                c_color = "#f87171"
-            else:
-                c_color = "#a89f87"
-            rows.append(
-                f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
-                f'padding:4px 0;border-bottom:1px solid rgba(201,162,74,0.10);">'
-                f'<span style="font-size:12px;color:#c8bfa8;">{label}</span>'
-                f'<span style="font-size:12px;font-weight:bold;color:#f1ecdf;">{value}'
-                f'&nbsp;<span style="color:{c_color};font-size:11px;">{_esc(change)}</span></span>'
-                f'</div>'
-            )
+    stocks = (top_stocks_data or {}).get("stocks") or []
+    session_aest = _esc((top_stocks_data or {}).get("session_aest", ""))
+
+    if stocks:
+        cards = "".join(_render_stock_card(s, i) for i, s in enumerate(stocks))
+        session_line = (
+            f'<div style="font-size:9px;color:#8a8070;margin-bottom:10px;line-height:1.4;">'
+            f'US session (AEST): {session_aest}'
+            f'</div>'
+            if session_aest else ""
+        )
         parts.append(
             f'<div>'
+            f'<div style="border-top:1px solid rgba(201,162,74,0.4);margin:0 0 10px 0;"></div>'
+            f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;'
+            f'text-transform:uppercase;margin-bottom:4px;">Top 5 Picks &middot; US Session</div>'
+            + session_line
+            + cards
+            + f'<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(201,162,74,0.12);'
+            f'font-size:9px;color:#5b6577;line-height:1.4;font-style:italic;">'
+            f'&#9888; For informational purposes only. Not financial advice. '
+            f'Past performance does not guarantee future results.</div>'
+            f'</div>'
+        )
+    else:
+        parts.append(
             f'<div style="border-top:1px solid rgba(201,162,74,0.4);margin:0 0 12px 0;"></div>'
-            f'<div style="font-size:10px;letter-spacing:3px;color:{GOLD};font-weight:bold;text-transform:uppercase;margin-bottom:7px;">Markets Today</div>'
-            + "".join(rows)
-            + '</div>'
+            f'<div style="color:#8a8070;font-size:12px;font-style:italic;padding:8px 0;">'
+            f'Stock picks unavailable today.</div>'
         )
 
     if not parts:
@@ -462,7 +529,7 @@ def render_html(weather: dict[str, Any], items: list[dict[str, Any]], brief_meta
 
     left_panel = _render_left_panel(
         _meta.get("quote_of_day") or {},
-        _meta.get("market_numbers") or [],
+        _meta.get("top_stocks_data") or None,
     )
 
     # Big date: "27 April 2026, Monday"

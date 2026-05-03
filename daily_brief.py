@@ -38,7 +38,7 @@ def _load_env_file(path: Path) -> None:
 _load_env_file(HERE / ".env")
 
 from html_generator import render_html  # noqa: E402
-from news_generator import fetch_daily_news  # noqa: E402
+from news_generator import fetch_daily_news, fetch_top_stocks  # noqa: E402
 from weather_fetcher import WeatherFetcher  # noqa: E402
 
 
@@ -209,6 +209,19 @@ def main() -> int:
                 f"News fetch unavailable today; this brief re-uses {fallback.stem.split('-')[-3]}-"
                 f"{fallback.stem.split('-')[-2]}-{fallback.stem.split('-')[-1]} content."
             )
+
+    print("[stocks] fetching top-5 US intraday picks via Claude + web_search…", flush=True)
+    try:
+        top_stocks_data = fetch_top_stocks()
+        brief_meta["top_stocks_data"] = top_stocks_data
+        print(
+            f"[stocks] got {len(top_stocks_data.get('stocks', []))} picks "
+            f"for session {top_stocks_data.get('session_aest', '')}",
+            flush=True,
+        )
+    except Exception as stocks_err:
+        print(f"[stocks] FAILED (non-fatal): {stocks_err}", flush=True)
+        brief_meta["top_stocks_data"] = None
 
     print("[images] downloading and embedding story images…", flush=True)
     items = _embed_images(items)
