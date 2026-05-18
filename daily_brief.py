@@ -395,6 +395,18 @@ def main() -> int:
         text_preface=_short_text_preface(items, now_aest),
     )
     print("[send] delivered.", flush=True)
+
+    # Heartbeat: tell healthchecks.io we successfully delivered. If this URL
+    # isn't pinged within the daily window configured at healthchecks.io,
+    # the user gets an email alert. Optional — only fires if env var set.
+    hc_url = os.environ.get("HEALTHCHECKS_PING_URL", "").strip()
+    if hc_url:
+        try:
+            urllib.request.urlopen(hc_url, timeout=10).read()
+            print("[heartbeat] healthchecks.io pinged ✓", flush=True)
+        except Exception as exc:
+            print(f"[heartbeat] healthchecks ping failed (non-fatal): {exc}", flush=True)
+
     return 0
 
 
