@@ -32,7 +32,7 @@ app = modal.App("daily-news-brief")
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "anthropic>=0.40.0",
+        "google-genai>=1.0.0",
         "requests>=2.31.0",
         "pytz>=2024.1",
     )

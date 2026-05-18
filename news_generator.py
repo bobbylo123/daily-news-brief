@@ -1,25 +1,31 @@
-"""News content generator backed by Claude API + web_search.
+"""News content generator backed by Google Gemini 2.0 Flash + Google Search.
 
-Returns a list of three structured news items (Global, Business & Markets,
-Hong Kong), each with rich analytical content per the daily-brief spec.
+Same public interface as the previous Anthropic version — fetch_daily_news()
+and fetch_top_stocks() return identical structures so no other file needs
+changing.
 
-Uses Anthropic tool-use with a strict JSON schema for the FINAL submission, so
-the model is forced to return valid, parseable structured data. Web search is
-provided as a separate server-side tool the model uses for research.
+Cost: $0/month on Gemini free tier (1,500 requests/day; we use 2/day).
+Requires: GEMINI_API_KEY env var (get free key at https://ai.google.dev)
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import anthropic
 import pytz
+from google import genai
+from google.genai import types
 
 CATEGORIES = ["Global", "Business & Markets", "Hong Kong"]
+
+# ---------------------------------------------------------------------------
+# Prompts — news brief
+# ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """You are the senior editor of an elite daily news brief.
 Your reader is in Brisbane and needs a fact-checked, balanced,
@@ -33,244 +39,158 @@ Sourcing rules (strict):
 * Every URL must be a real, currently-resolvable article URL.
 * Verify each fact across at least two outlets before stating it.
 
-Workflow:
-1. Use web_search aggressively to find today's biggest story per category.
-2. Read enough context to assemble multi-angle, multi-stakeholder coverage.
-3. When complete, call the `submit_daily_brief` tool ONCE with the full
-   structured payload. Do not write prose afterwards."""
+Use Google Search aggressively to research today's top stories.
+When done, output ONLY a single valid JSON object — no markdown, no explanation."""
 
 USER_PROMPT_TEMPLATE = """Today is {date_str} (Brisbane / AEST).
 
 Find TODAY'S single most newsworthy story for EACH of these three categories:
 
   1. Global              — world-affairs, geopolitics, conflict, climate, science
-                           (NOT business/markets, NOT Hong Kong)
   2. Business & Markets  — macro, equities, FX, central banks, major corporates
   3. Hong Kong           — HK politics, economy, society, regulation, finance
-                           (must be HK-centric, not just mainland China)
 
-For each story, gather:
-  * The official headline (verbatim from the lead source).
+For each story gather:
+  * The official headline from the lead source.
   * A direct article URL from the lead outlet.
-  * A topical news photograph URL. STRICT RULES — failure to follow = leave empty:
-      1. You MUST have seen this EXACT URL in a search result or on a web page.
-         DO NOT construct, guess, or truncate a URL. A missing image is far better
-         than a broken or partial link.
-      2. The URL MUST end with a recognised image extension: .jpg .jpeg .png .webp
-         or .gif — URLs that end with digits, underscores, or letters without an
-         extension are FORBIDDEN and must be left empty.
-      3. Strongly prefer these embeddable CDNs (in order):
-           a. BBC:     https://ichef.bbci.co.uk/news/1024/cpsprodpb/XXXX/live/XXXX.jpg
-           b. Reuters: https://cloudfront-us-east-2.images.arcpublishing.com/reuters/XXXX.jpg
-           c. AP:      https://dims.apnews.com/dims4/default/XXXX/XXXX/strip/true/XXXX.jpg
-           d. Al Jazeera: https://www.aljazeera.com/wp-content/uploads/YYYY/MM/XXXX.jpg
-      4. To find the exact URL: use web_search to open the article page, then copy
-         the full src= value of the lead image — do not shorten or paraphrase it.
-      5. Avoid CBS News, CNBC, SCMP CDNs — they block hotlinking.
-      6. If you cannot find a complete, verified URL with an image extension, leave empty.
-  * A direct video-report URL. STRICT RULES — failure to follow = leave empty:
-      1. Use web_search to find the video (e.g. search YouTube for the headline).
-      2. The URL MUST contain "watch?v=" — channel pages and playlists are forbidden.
-      3. You MUST have seen the video in a search result or web page before including it.
-         DO NOT construct or guess a URL. If you cannot find a real, confirmed URL, leave
-         video_url empty — a missing video is far better than a broken link.
-      4. Preferred channels: BBC News, Reuters, Bloomberg Television, AP Archive,
-         CNN, Al Jazeera English, RTHK, SCMP.
-      5. Also fill in video_channel with the plain channel name (e.g. "BBC News",
-         "Al Jazeera English"). If video_url is empty, leave video_channel empty too.
-  * 6-8 attributed summary bullets (each cites an outlet + URL).
-  * 4 different reporting angles, EACH from a different outlet.
-  * 3-4 stakeholder perspectives. For each stance field: use 1-3 words ONLY
-    (e.g. "Hawkish", "Cautiously Optimistic", "Opposed", "Sceptical").
-    Do NOT write full sentences in the stance field.
-  * One genuinely useful visual aid as inline HTML (a timeline table, a
-    stakeholder comparison table, a mindmap as a nested list, a numbers
-    table, etc.). Use only inline styles, no <script>, no external CSS,
-    no <link> tags. Keep it under ~1500 characters.
+  * A topical photograph URL — STRICT RULES (leave empty if any rule fails):
+      1. You MUST have seen this EXACT URL in a search result or on a page.
+         DO NOT construct, guess, or truncate a URL.
+      2. URL MUST end with a recognised image extension: .jpg .jpeg .png .webp .gif
+      3. Strongly prefer these embeddable CDNs:
+           BBC:      https://ichef.bbci.co.uk/news/1024/cpsprodpb/XXXX/live/XXXX.jpg
+           Reuters:  https://cloudfront-us-east-2.images.arcpublishing.com/reuters/XXXX.jpg
+           AP:       https://dims.apnews.com/dims4/default/XXXX/strip/true/XXXX.jpg
+           AJ:       https://www.aljazeera.com/wp-content/uploads/YYYY/MM/XXXX.jpg
+      4. Avoid CBS News, CNBC, SCMP CDNs — they block hotlinking.
+  * A video URL — STRICT RULES (leave empty if any rule fails):
+      1. Must contain "watch?v=" — channel/playlist pages forbidden.
+      2. You MUST have confirmed this URL in a search result.
+      3. Preferred: BBC News, Reuters, Bloomberg, AP Archive, Al Jazeera.
+      4. Fill video_channel with plain channel name e.g. "BBC News".
+  * 6-8 attributed summary bullets (each cites outlet + URL).
+  * 4 reporting angles each from a DIFFERENT outlet.
+  * 3-4 stakeholder perspectives. Stance field: 1-3 words ONLY (e.g. "Hawkish").
+  * One visual aid as inline HTML (timeline table, comparison table, or mindmap).
+    Use only inline styles. No <script>, no external CSS. Max ~1500 characters.
 
-Also provide these four top-level fields:
-  * quote_of_day: The single most striking verbatim quote from any of today's
-    three stories. Include the speaker's full name and title, and the outlet.
-  * market_numbers: 4-6 key stock/financial figures relevant to today's
-    Business & Markets story. Typical labels: S&P 500, NASDAQ, ASX 200,
-    USD/AUD, Gold (oz), Bitcoin. For each:
-      - label: short ticker/index name only (e.g. "S&P 500", "Gold (oz)")
-      - value: clean number only (e.g. "5,432" or "$101") — NO narrative text
-      - change: percentage with sign only (e.g. "+1.2%" or "-0.8%") — NO narrative
-  * daily_note: One sharp, analytical sentence (20-30 words) capturing the
-    overarching theme connecting today's three stories. Written as a senior
-    editor's insight, not a summary. No clichés.
-  * key_events_to_watch: 3-4 specific upcoming events directly tied to today's
-    three stories — things the reader should monitor. Each needs a short date
-    (e.g. "May 7", "This week", "June 2026") and one concise sentence (max
-    15 words) describing what to watch. Examples: Fed rate decision, UN vote,
-    earnings release, peace-talk resumption, CPI data print, election date,
-    court ruling, treaty deadline, OPEC meeting.
+Top-level fields also required:
+  * quote_of_day: most striking verbatim quote from today's three stories.
+  * market_numbers: 4-6 key figures (S&P 500, NASDAQ, ASX 200, USD/AUD, Gold, Bitcoin).
+    label: short name only. value: number only. change: percentage with sign only.
+  * daily_note: one sharp analytical sentence (20-30 words) on today's overarching theme.
+  * key_events_to_watch: 3-4 specific upcoming events tied to today's stories.
+    Each needs a short date and one sentence (max 15 words).
 
-When the research is done, call the `submit_daily_brief` tool ONCE with all
-three stories in the order: Global, Business & Markets, Hong Kong."""
+Output ONLY this JSON object — no markdown fences, no extra text:
 
-# JSON schema describing the brief — passed as a tool's input_schema so the
-# model is forced into validated structured output.
-SUBMIT_TOOL = {
-    "name": "submit_daily_brief",
-    "description": (
-        "Submit the final structured daily news brief. Call this exactly once "
-        "after research is complete. Do not call any other tool afterwards."
-    ),
-    "input_schema": {
-        "type": "object",
-        "required": ["items", "quote_of_day", "market_numbers", "daily_note", "key_events_to_watch"],
-        "properties": {
-            "key_events_to_watch": {
-                "type": "array",
-                "minItems": 3,
-                "maxItems": 4,
-                "description": (
-                    "3-4 specific upcoming events, deadlines, or data releases directly related to today's stories. "
-                    "Each entry tells the reader what to watch next. Examples: Fed rate decision, UN vote, "
-                    "earnings release, peace talks, CPI data, election date, court hearing, treaty deadline."
-                ),
-                "items": {
-                    "type": "object",
-                    "required": ["date", "event"],
-                    "properties": {
-                        "date": {"type": "string", "description": "Short date or timeframe e.g. 'May 7', 'Next week', 'Q3 2026'"},
-                        "event": {"type": "string", "description": "One concise sentence describing what to watch (max 15 words)"},
-                    },
-                },
-            },
-            "daily_note": {
-                "type": "string",
-                "description": "One sharp editorial sentence (20-30 words) on today's overarching theme",
-            },
-            "quote_of_day": {
-                "type": "object",
-                "required": ["quote", "speaker", "source"],
-                "properties": {
-                    "quote": {"type": "string", "description": "Verbatim striking quote from today's coverage"},
-                    "speaker": {"type": "string", "description": "Full name and title of the speaker"},
-                    "source": {"type": "string", "description": "News outlet name"},
-                },
-            },
-            "market_numbers": {
-                "type": "array",
-                "minItems": 4,
-                "maxItems": 6,
-                "description": "Key stock market / financial figures from today's Business story",
-                "items": {
-                    "type": "object",
-                    "required": ["label", "value", "change"],
-                    "properties": {
-                        "label": {"type": "string", "description": "Index or ticker name e.g. S&P 500, ASX 200, USD/AUD, Gold"},
-                        "value": {"type": "string", "description": "Current level e.g. 5,432 or 0.6412"},
-                        "change": {"type": "string", "description": "Change with sign e.g. +1.2% or -0.8%"},
-                    },
-                },
-            },
-            "items": {
-                "type": "array",
-                "minItems": 3,
-                "maxItems": 3,
-                "items": {
-                    "type": "object",
-                    "required": [
-                        "category", "title", "lead_source",
-                        "summary_bullets", "reporting_angles",
-                        "perspectives", "visual_aid",
-                    ],
-                    "properties": {
-                        "category": {
-                            "type": "string",
-                            "enum": ["Global", "Business & Markets", "Hong Kong"],
-                        },
-                        "title": {"type": "string", "minLength": 8},
-                        "lead_source": {
-                            "type": "object",
-                            "required": ["name", "url"],
-                            "properties": {
-                                "name": {"type": "string"},
-                                "url": {"type": "string"},
-                            },
-                        },
-                        "image_url": {"type": "string"},
-                        "video_url": {"type": "string"},
-                        "video_channel": {"type": "string", "description": "Plain channel name e.g. BBC News, Al Jazeera English"},
-                        "summary_bullets": {
-                            "type": "array",
-                            "minItems": 5,
-                            "maxItems": 10,
-                            "items": {
-                                "type": "object",
-                                "required": ["text", "source", "url"],
-                                "properties": {
-                                    "text": {"type": "string"},
-                                    "source": {"type": "string"},
-                                    "url": {"type": "string"},
-                                },
-                            },
-                        },
-                        "reporting_angles": {
-                            "type": "array",
-                            "minItems": 3,
-                            "maxItems": 5,
-                            "items": {
-                                "type": "object",
-                                "required": ["angle", "outlet", "summary", "url"],
-                                "properties": {
-                                    "angle": {"type": "string"},
-                                    "outlet": {"type": "string"},
-                                    "summary": {"type": "string"},
-                                    "url": {"type": "string"},
-                                },
-                            },
-                        },
-                        "perspectives": {
-                            "type": "array",
-                            "minItems": 2,
-                            "maxItems": 5,
-                            "items": {
-                                "type": "object",
-                                "required": [
-                                    "stakeholder", "stance",
-                                    "quote_or_paraphrase", "source", "url",
-                                ],
-                                "properties": {
-                                    "stakeholder": {"type": "string"},
-                                    "stance": {"type": "string"},
-                                    "quote_or_paraphrase": {"type": "string"},
-                                    "source": {"type": "string"},
-                                    "url": {"type": "string"},
-                                },
-                            },
-                        },
-                        "visual_aid": {
-                            "type": "object",
-                            "required": ["type", "title", "html"],
-                            "properties": {
-                                "type": {
-                                    "type": "string",
-                                    "enum": ["timeline", "table", "comparison", "mindmap"],
-                                },
-                                "title": {"type": "string"},
-                                "html": {"type": "string"},
-                            },
-                        },
-                    },
-                },
-            }
-        },
-    },
-}
+{{
+  "daily_note": "<20-30 word analytical sentence>",
+  "quote_of_day": {{"quote": "...", "speaker": "<full name and title>", "source": "<outlet>"}},
+  "market_numbers": [
+    {{"label": "S&P 500", "value": "5,432", "change": "+1.2%"}},
+    {{"label": "NASDAQ", "value": "17,890", "change": "-0.8%"}},
+    {{"label": "ASX 200", "value": "7,234", "change": "+0.5%"}},
+    {{"label": "USD/AUD", "value": "0.6412", "change": "-0.3%"}}
+  ],
+  "key_events_to_watch": [
+    {{"date": "May 21", "event": "<one concise sentence max 15 words>"}}
+  ],
+  "items": [
+    {{
+      "category": "Global",
+      "title": "<verbatim headline>",
+      "lead_source": {{"name": "<outlet>", "url": "<article URL>"}},
+      "image_url": "<full CDN URL with image extension, or empty string>",
+      "video_url": "<YouTube watch?v= URL, or empty string>",
+      "video_channel": "<channel name, or empty string>",
+      "summary_bullets": [
+        {{"text": "<fact>", "source": "<outlet>", "url": "<URL>"}}
+      ],
+      "reporting_angles": [
+        {{"angle": "<angle label>", "outlet": "<outlet>", "summary": "<2-3 sentences>", "url": "<URL>"}}
+      ],
+      "perspectives": [
+        {{"stakeholder": "<who>", "stance": "<1-3 words>", "quote_or_paraphrase": "<text>", "source": "<outlet>", "url": "<URL>"}}
+      ],
+      "visual_aid": {{"type": "table", "title": "<title>", "html": "<inline HTML only>"}}
+    }},
+    {{ "category": "Business & Markets", ... }},
+    {{ "category": "Hong Kong", ... }}
+  ]
+}}"""
 
 
-def _client() -> anthropic.Anthropic:
-    key = os.environ.get("ANTHROPIC_API_KEY")
+# ---------------------------------------------------------------------------
+# Prompts — stock picks
+# ---------------------------------------------------------------------------
+
+STOCK_SYSTEM_PROMPT = """You are an aggressive US equity momentum analyst hunting for
+explosive intraday movers on NYSE and NASDAQ. Your sole task is to find the 4 US stocks
+with the HIGHEST potential intraday gain during TODAY's regular session (9:30 am – 4:00 pm EDT).
+
+Target profile — ONLY include stocks that fit at least one of these high-upside setups:
+  A. FDA BINARY EVENT  : PDUFA dates, CRL decisions, fast-track/breakthrough designations.
+  B. EARNINGS SURPRISE : Small/mid-cap beating EPS by >15% or revenue by >10%.
+  C. SHORT SQUEEZE     : Stock with >20% short float + fresh positive catalyst + rising volume.
+  D. PRE-MARKET GAPPER : Already up >15% pre-market on news.
+  E. M&A / TAKEOVER    : Acquisition announcement at a significant premium.
+  F. MAJOR ANALYST UPGRADE: Strong buy initiation or target-price doubling by a tier-1 firm.
+
+Use Google Search to research all six setup types. Then output ONLY a single valid JSON object."""
+
+STOCK_USER_PROMPT_TEMPLATE = """Today is {date_str} (Brisbane/AEST).
+The US regular trading session is {us_date_str}: 9:30 am – 4:00 pm EDT
+(= {aest_open_str} – {aest_close_str} AEST on {aest_dates_str}).
+
+Execute this research checklist using Google Search:
+1. Search "FDA PDUFA dates {us_date_str}" and "FDA drug approval decision today".
+2. Search "pre-market top gainers today {us_date_str}".
+3. Search "earnings surprise {us_date_str} small cap beat".
+4. Search "short squeeze stocks {us_date_str}".
+5. Search "unusual options activity {us_date_str}".
+6. Search "acquisition merger announcement today {us_date_str}".
+7. For each shortlisted candidate search "[TICKER] news {us_date_str}".
+8. Select top 4 by expected intraday gain. Minimum expected gain: +30%.
+
+Output ONLY this JSON object — no markdown, no extra text:
+
+{{
+  "session_date_us": "{us_date_str}",
+  "session_aest": "{aest_open_str} – {aest_close_str} AEST {aest_dates_str}",
+  "stocks": [
+    {{
+      "rank": 1,
+      "ticker": "XXXX",
+      "company": "<full name>",
+      "sector": "<sector>",
+      "last_price": "$0.00",
+      "setup_type": "FDA Decision",
+      "expected_gain_pct": "+40-80%",
+      "key_factors": "<1-2 plain English sentences for a beginner>",
+      "entry_price": "$0.00–$0.00",
+      "stop_loss": "$0.00 (-12%)",
+      "take_profit": "$0.00–$0.00 (+60-95%)",
+      "risk_reward_ratio": "1:5",
+      "technical_summary": "<2-3 key signals: short float %, RSI, volume vs avg>",
+      "risk_level": "High",
+      "confidence_level": "High"
+    }}
+  ]
+}}"""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _client() -> genai.Client:
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
         raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Run setup.sh or export it before running."
+            "GEMINI_API_KEY is not set. Get a free key at https://ai.google.dev"
         )
-    return anthropic.Anthropic(api_key=key, max_retries=5)
+    return genai.Client(api_key=key)
 
 
 def _debug_dir() -> Path:
@@ -279,102 +199,103 @@ def _debug_dir() -> Path:
     return p
 
 
-def fetch_daily_news(
-    model: str = "claude-sonnet-4-6",
-    max_searches: int = 8,
-) -> list[dict[str, Any]]:
-    """Run Claude with web_search + a strict-schema submission tool.
+def _extract_json(text: str) -> dict:
+    """Extract a JSON object from model response, handling markdown fences."""
+    text = text.strip()
+    # Strip markdown code fences if present
+    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if fence:
+        text = fence.group(1).strip()
+    # Find outermost { ... }
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(
+            f"No JSON object in model response. First 500 chars:\n{text[:500]}"
+        )
+    return json.loads(text[start:end])
 
-    Robust against transient 429 rate-limit errors via aggressive retry/backoff.
+
+def _gemini_call(
+    client: genai.Client,
+    model: str,
+    system: str,
+    prompt: str,
+    label: str,
+) -> str:
+    """Call Gemini with Google Search grounding, with retry on transient errors."""
+    config = types.GenerateContentConfig(
+        system_instruction=system,
+        tools=[types.Tool(google_search=types.GoogleSearch())],
+        temperature=0.3,
+    )
+    backoff = [30, 60, 90, 120, 180, 240]
+    last_err: Exception | None = None
+    for attempt in range(len(backoff) + 1):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config,
+            )
+            return response.text
+        except Exception as exc:
+            last_err = exc
+            if attempt >= len(backoff):
+                break
+            wait = backoff[attempt]
+            print(
+                f"[{label}] API error ({type(exc).__name__}); "
+                f"retrying in {wait}s (attempt {attempt + 2}/{len(backoff) + 1})…",
+                flush=True,
+            )
+            time.sleep(wait)
+    raise last_err or RuntimeError(f"[{label}] no response after retries")
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def fetch_daily_news(model: str = "gemini-2.0-flash") -> dict[str, Any]:
+    """Fetch today's top 3 stories using Gemini + Google Search.
+
+    Returns the same dict structure as the previous Anthropic version:
+    {"items": [...], "quote_of_day": {...}, "market_numbers": [...],
+     "daily_note": "...", "key_events_to_watch": [...]}
     """
     client = _client()
     aest = pytz.timezone("Australia/Brisbane")
     now = datetime.now(aest)
     date_str = now.strftime("%A, %d %B %Y")
 
-    # Progressive backoff: total max wait ~17 minutes across 7 attempts.
-    # Long enough that even a sustained 429 burst clears before we give up.
-    backoff_schedule = [60, 90, 120, 180, 240, 300]
-    last_err = None
-    message = None
-    for attempt in range(len(backoff_schedule) + 1):
-        try:
-            message = client.messages.create(
-                model=model,
-                max_tokens=12000,
-                system=SYSTEM_PROMPT,
-                tools=[
-                    {
-                        "type": "web_search_20250305",
-                        "name": "web_search",
-                        "max_uses": max_searches,
-                    },
-                    SUBMIT_TOOL,
-                ],
-                tool_choice={"type": "auto"},
-                messages=[{
-                    "role": "user",
-                    "content": USER_PROMPT_TEMPLATE.format(date_str=date_str),
-                }],
-            )
-            break
-        except anthropic.RateLimitError as e:
-            last_err = e
-            if attempt >= len(backoff_schedule):
-                raise
-            wait = backoff_schedule[attempt]
-            print(
-                f"[news] rate-limited (429); sleeping {wait}s before retry "
-                f"{attempt + 2}/{len(backoff_schedule) + 1}…",
-                flush=True,
-            )
-            time.sleep(wait)
-        except (anthropic.APIConnectionError, anthropic.APIStatusError) as e:
-            last_err = e
-            if attempt >= len(backoff_schedule):
-                raise
-            wait = min(60, backoff_schedule[attempt])
-            print(f"[news] transient API error: {type(e).__name__}; sleeping {wait}s…", flush=True)
-            time.sleep(wait)
-    if message is None:
-        raise last_err or RuntimeError("Failed to obtain Claude response")
+    print(f"[news] querying Gemini {model} with Google Search…", flush=True)
+    prompt = USER_PROMPT_TEMPLATE.format(date_str=date_str)
+    raw_text = _gemini_call(client, model, SYSTEM_PROMPT, prompt, "news")
 
-    # Persist the raw response for forensics on failure.
+    # Persist raw response for debugging
     debug_path = _debug_dir() / f"news-raw-{now.strftime('%Y-%m-%d')}.json"
-    debug_path.write_text(message.model_dump_json(indent=2))
+    debug_path.write_text(raw_text)
 
-    submission = None
-    text_fallback_parts = []
-    for block in message.content:
-        btype = getattr(block, "type", None)
-        if btype == "tool_use" and getattr(block, "name", "") == "submit_daily_brief":
-            submission = block.input
-        elif btype == "text":
-            text_fallback_parts.append(block.text)
-
-    if submission is None:
+    try:
+        submission = _extract_json(raw_text)
+    except (json.JSONDecodeError, ValueError) as exc:
         raise RuntimeError(
-            "Model did not call submit_daily_brief. "
-            f"stop_reason={message.stop_reason!r}. "
-            f"Text content was:\n{''.join(text_fallback_parts)[:1000]}\n"
-            f"Full raw response saved to {debug_path}"
-        )
+            f"Gemini returned unparseable JSON. Error: {exc}\n"
+            f"Raw (first 1000 chars):\n{raw_text[:1000]}"
+        ) from exc
 
     items = submission.get("items", [])
-    # Defensive: model sometimes serialises the array as a JSON string.
     if isinstance(items, str):
-        try:
-            items = json.loads(items)
-        except Exception:
-            pass
+        items = json.loads(items)
     if not isinstance(items, list) or len(items) != 3:
-        raise ValueError(f"Expected 3 items in submission, got: {items!r}")
+        raise ValueError(f"Expected 3 items, got: {len(items) if isinstance(items, list) else type(items)}")
 
     by_cat = {it.get("category"): it for it in items}
     ordered = []
     for cat in CATEGORIES:
         if cat not in by_cat:
-            raise ValueError(f"Missing category {cat} in model output")
+            raise ValueError(f"Missing category '{cat}' in Gemini output")
         ordered.append(_normalise(by_cat[cat]))
 
     return {
@@ -386,263 +307,24 @@ def fetch_daily_news(
     }
 
 
-def _normalise(item: dict[str, Any]) -> dict[str, Any]:
-    """Fill in any missing optional fields with safe defaults."""
-    item.setdefault("image_url", "")
-    item.setdefault("video_channel", "")
-    item.setdefault("summary_bullets", [])
-    item.setdefault("reporting_angles", [])
-    item.setdefault("perspectives", [])
-    item.setdefault("visual_aid", {"type": "table", "title": "", "html": ""})
-    item.setdefault("lead_source", {"name": "", "url": ""})
-    # Only keep video URLs that are confirmed specific YouTube watch links.
-    video = item.get("video_url") or ""
-    item["video_url"] = video if "watch?v=" in video else ""
-    return item
-
-
-# ---------------------------------------------------------------------------
-# Top-4 US intraday stock picks
-# ---------------------------------------------------------------------------
-
-STOCK_SYSTEM_PROMPT = """You are an aggressive US equity momentum analyst hunting for
-explosive intraday movers on NYSE and NASDAQ. Your sole task is to find the 4 US stocks
-with the HIGHEST potential intraday gain during TODAY's regular session (9:30 am – 4:00 pm EDT).
-
-Target profile — ONLY include stocks that fit at least one of these high-upside setups:
-  A. FDA BINARY EVENT  : PDUFA dates, CRL decisions, fast-track/breakthrough designations.
-     Biotech with binary catalyst can move +30% to +200% intraday on approval.
-  B. EARNINGS SURPRISE : Small/mid-cap beating EPS by >15% or revenue by >10%. Post-earnings
-     gap-and-run from a compressed base can add +30–80% on the day.
-  C. SHORT SQUEEZE     : Stock with >20% short float + fresh positive catalyst + rising volume.
-     Forced short covering drives exponential intraday spikes.
-  D. PRE-MARKET GAPPER : Already up >15% pre-market on news. Stocks that gap >15% often
-     continue intraday — confirm the catalyst is real and strong enough to sustain.
-  E. M&A / TAKEOVER    : Acquisition announcement at a significant premium. Target stock
-     price converges to offer price intraday — 20–50%+ gain is common.
-  F. MAJOR ANALYST UPGRADE: Strong buy initiation or target-price doubling by a tier-1 firm
-     on a heavily covered stock with technical momentum aligned.
-
-Research methodology — follow every step:
-1. FDA CALENDAR    : Search "FDA PDUFA dates" and "FDA drug decisions today".
-2. PRE-MARKET      : Search "pre-market top gainers today" and investigate the specific
-                     catalyst behind each gapper (confirm quality and sustainability).
-3. EARNINGS        : Search "earnings surprise today small cap beat" and
-                     "after hours earnings beats".
-4. SHORT SQUEEZE   : Search "most shorted stocks today" and "short squeeze candidates".
-5. UNUSUAL OPTIONS : Search "unusual options activity today" and
-                     "0DTE call sweep today" — massive call sweeps = institutional conviction.
-6. M&A / UPGRADES  : Search "acquisition announcement today" and
-                     "analyst upgrade initiation today".
-
-Selection rules (non-negotiable):
-* US-listed NYSE or NASDAQ stocks ONLY. No OTC, no crypto, no ETFs.
-* Minimum expected intraday gain: +30%. Ideal target range: +30% to +80%.
-* The gain must materialise WITHIN today's single session — NOT over days/weeks.
-* Rank the 4 picks by probability-weighted expected intraday gain (highest conviction #1).
-* Every pick MUST have a concrete, verifiable catalyst found via web_search.
-* REJECT large-cap blue chips (AAPL, MSFT, NVDA, etc.) — they rarely move >5% intraday.
-  Focus on small-cap ($50M–$2B market cap) and mid-cap stocks with binary catalysts.
-* This output is for informational/educational purposes ONLY. It is NOT investment advice."""
-
-STOCK_USER_PROMPT_TEMPLATE = """Today is {date_str} (Brisbane/AEST).
-The US regular trading session is {us_date_str}: 9:30 am – 4:00 pm EDT
-(= {aest_open_str} – {aest_close_str} AEST on {aest_dates_str}).
-
-Your goal: find 4 stocks that could gain +30% to +80%+ WITHIN this single session.
-Focus ONLY on small/mid-caps with binary catalysts — not large-cap blue chips.
-
-Execute this research checklist:
-1. Search "FDA PDUFA dates {us_date_str}" and "FDA drug approval decision today {us_date_str}".
-2. Search "pre-market top gainers today {us_date_str}" — check stocks already up >15% pre-market.
-3. Search "earnings surprise {us_date_str} small cap beat" and "after hours earnings tonight".
-4. Search "short squeeze stocks {us_date_str}" and "most shorted NYSE NASDAQ stocks".
-5. Search "unusual options activity {us_date_str}" and "call sweep unusual options today".
-6. Search "acquisition merger announcement today {us_date_str}".
-7. For each shortlisted candidate: search "[TICKER] news {us_date_str}" to confirm catalyst.
-8. Shortlist at least 6–8 candidates, then select the top 4 by expected intraday gain %.
-
-For every final pick, confirm ALL of the following:
-  • ticker + company name + sector
-  • setup_type: one of FDA Decision, Earnings Surprise, Short Squeeze, Pre-Market Gapper,
-    M&A Announcement, Analyst Upgrade, Technical Breakout
-  • last_price: last close or pre-market price
-  • expected_gain_pct: MUST be ≥ +30%, e.g. "+40–80%"
-  • key_factors: 1-2 plain-English sentences for a trading BEGINNER explaining the single
-    most powerful driver. No jargon. E.g. "53%% of this stock is sold short — when Q1
-    earnings beat on May 6, short-sellers must buy back fast, sending price rocketing."
-  • entry_price: suggested buy range e.g. "$8.00–$8.50"
-  • stop_loss: e.g. "$7.20 (−12%%)" — where to exit if wrong
-  • take_profit: e.g. "$13–$16 (+60–95%%)" — price target
-  • risk_reward_ratio: e.g. "1:5" (risk $1 to make $5)
-  • technical_summary: 2-3 key signals (short float %%, RSI, volume vs avg, MA position)
-  • risk_level: High for FDA binary events, Medium for squeeze/earnings, Low for M&A
-  • confidence_level: Moderate / High / Very High"""
-
-TOP_STOCKS_TOOL = {
-    "name": "submit_top_stocks",
-    "description": (
-        "Submit the final ranked list of the top 4 US intraday stock picks. "
-        "Call this exactly once after all research is complete."
-    ),
-    "input_schema": {
-        "type": "object",
-        "required": ["session_date_us", "session_aest", "stocks"],
-        "properties": {
-            "session_date_us": {
-                "type": "string",
-                "description": "US session date string e.g. 'Monday, 4 May 2026'",
-            },
-            "session_aest": {
-                "type": "string",
-                "description": "AEST session window e.g. '11:30 pm Mon 4 May – 6:00 am Tue 5 May'",
-            },
-            "stocks": {
-                "type": "array",
-                "minItems": 4,
-                "maxItems": 4,
-                "description": "Top 4 picks, ranked #1 (highest conviction) to #4.",
-                "items": {
-                    "type": "object",
-                    "required": [
-                        "rank", "ticker", "company", "sector",
-                        "last_price", "setup_type", "expected_gain_pct",
-                        "key_factors", "entry_price", "stop_loss", "take_profit",
-                        "risk_reward_ratio", "technical_summary",
-                        "risk_level", "confidence_level",
-                    ],
-                    "properties": {
-                        "rank": {
-                            "type": "integer", "minimum": 1, "maximum": 4,
-                            "description": "1 = highest conviction",
-                        },
-                        "ticker": {"type": "string", "description": "e.g. GRPN"},
-                        "company": {"type": "string", "description": "Full company name"},
-                        "sector": {"type": "string", "description": "e.g. Technology, Healthcare"},
-                        "last_price": {
-                            "type": "string",
-                            "description": "Last close or pre-market price e.g. $8.20",
-                        },
-                        "setup_type": {
-                            "type": "string",
-                            "enum": [
-                                "FDA Decision",
-                                "Earnings Surprise",
-                                "Short Squeeze",
-                                "Pre-Market Gapper",
-                                "M&A Announcement",
-                                "Analyst Upgrade",
-                                "Technical Breakout",
-                            ],
-                            "description": "Primary setup type driving the explosive intraday move",
-                        },
-                        "expected_gain_pct": {
-                            "type": "string",
-                            "description": "Expected intraday gain range — MUST be ≥ +30%, e.g. +35–55% or +40–80%",
-                        },
-                        "key_factors": {
-                            "type": "string",
-                            "description": (
-                                "1-2 sentences in plain English for a beginner explaining the single most powerful reason "
-                                "this stock will move today. No jargon. E.g. '53% of shares are sold short — if good news "
-                                "hits, short sellers must buy back fast, sending the price rocketing. Q1 earnings on May 6 "
-                                "is that trigger.'"
-                            ),
-                        },
-                        "entry_price": {
-                            "type": "string",
-                            "description": "Suggested entry price range e.g. '$8.00–$8.50' or 'Pre-market ~$8.20'",
-                        },
-                        "stop_loss": {
-                            "type": "string",
-                            "description": "Stop-loss level with percentage below entry e.g. '$7.20 (−12%)'",
-                        },
-                        "take_profit": {
-                            "type": "string",
-                            "description": "Take-profit target with percentage above entry e.g. '$13–$16 (+60–95%)'",
-                        },
-                        "risk_reward_ratio": {
-                            "type": "string",
-                            "description": "Risk-to-reward ratio e.g. '1:5' meaning risk $1 to potentially make $5",
-                        },
-                        "technical_summary": {
-                            "type": "string",
-                            "description": "2-3 key signals e.g. short float 53%, RSI 72, volume 420% avg",
-                        },
-                        "risk_level": {
-                            "type": "string",
-                            "enum": ["Low", "Medium", "High"],
-                        },
-                        "confidence_level": {
-                            "type": "string",
-                            "enum": ["Moderate", "High", "Very High"],
-                        },
-                    },
-                },
-            },
-        },
-    },
-}
-
-
-def _next_us_trading_date(now_aest: datetime, aest_tz, edt_tz) -> "date":
-    """Return the correct US trading date to use for stock picks.
-
-    Rules (all times AEST, weekday 0=Mon … 6=Sun):
-    • Friday / Saturday / Sunday AEST  → picks for the upcoming MONDAY EDT session
-    • Monday – Thursday AEST           → picks for the NEXT EDT day's session
-      (At 9 am AEST the current EDT clock reads ~7 pm the day before, so the
-       same-EDT-day session has already closed — always advance by 1 EDT day.)
-    Weekends in the resulting EDT date are skipped forward to Monday.
-    """
+def fetch_top_stocks(model: str = "gemini-2.0-flash") -> dict[str, Any]:
+    """Fetch top 4 US intraday stock picks using Gemini + Google Search."""
     from datetime import timedelta, time as _time
-    aest_weekday = now_aest.weekday()          # 0=Mon … 6=Sun
-    edt_date     = now_aest.astimezone(edt_tz).date()
 
-    if aest_weekday in (4, 5, 6):              # Fri / Sat / Sun AEST → Monday EDT
-        days_to_monday = (7 - edt_date.weekday()) % 7
-        if days_to_monday == 0:
-            days_to_monday = 7
-        target = edt_date + timedelta(days=days_to_monday)
-    else:                                       # Mon–Thu AEST → next EDT calendar day
-        target = edt_date + timedelta(days=1)
-        while target.weekday() in (5, 6):      # skip EDT weekend (safety)
-            target += timedelta(days=1)
-
-    return target
-
-
-def fetch_top_stocks(
-    model: str = "claude-sonnet-4-6",
-    max_searches: int = 18,
-) -> dict[str, Any]:
-    """Identify the top 4 US intraday stock picks for the next US trading session.
-
-    Session mapping (AEST brief day → target EDT session):
-      Mon–Thu AEST  →  same-name EDT day (next EDT day after 9 am AEST)
-      Fri/Sat/Sun AEST  →  upcoming Monday EDT session
-
-    Returns a dict with keys: stocks (list), session_date_us, session_aest.
-    Raises on unrecoverable failure so the caller can fall back gracefully.
-    """
-    from datetime import timedelta, time as _time
-    client   = _client()
-    aest     = pytz.timezone("Australia/Brisbane")
-    edt      = pytz.timezone("America/New_York")
+    client = _client()
+    aest = pytz.timezone("Australia/Brisbane")
+    edt = pytz.timezone("America/New_York")
     now_aest = datetime.now(aest)
 
-    # ── Determine target US trading date ──────────────────────────────────────
     target_us_date = _next_us_trading_date(now_aest, aest, edt)
-
-    us_open  = edt.localize(datetime.combine(target_us_date, _time(9, 30)))
+    us_open = edt.localize(datetime.combine(target_us_date, _time(9, 30)))
     us_close = edt.localize(datetime.combine(target_us_date, _time(16, 0)))
-    aest_open  = us_open.astimezone(aest)
+    aest_open = us_open.astimezone(aest)
     aest_close = us_close.astimezone(aest)
 
-    # ── Build human-readable strings ─────────────────────────────────────────
-    date_str       = now_aest.strftime("%A, %d %B %Y")          # brief publication date
-    us_date_str    = us_open.strftime("%A, %d %B %Y")           # target trading date (EDT)
-    aest_open_str  = aest_open.strftime("%-I:%M %p")
+    date_str = now_aest.strftime("%A, %d %B %Y")
+    us_date_str = us_open.strftime("%A, %d %B %Y")
+    aest_open_str = aest_open.strftime("%-I:%M %p")
     aest_close_str = aest_close.strftime("%-I:%M %p")
     if aest_open.date() == aest_close.date():
         aest_dates_str = aest_open.strftime("%a %-d %b")
@@ -651,17 +333,11 @@ def fetch_top_stocks(
             f"{aest_open.strftime('%a %-d %b')} – {aest_close.strftime('%a %-d %b')}"
         )
 
-    # Extra context for weekend / Friday briefs so Claude searches correctly
-    is_weekend_brief = now_aest.weekday() in (4, 5, 6)
-    if is_weekend_brief:
-        weekend_note = (
-            f"\nNOTE: This brief is published on {now_aest.strftime('%A')} AEST. "
-            f"The US market is CLOSED until Monday. Research catalysts that will "
-            f"drive Monday's opening — weekend news, pre-market futures, upcoming "
-            f"earnings on Monday, analyst notes released over the weekend."
-        )
-    else:
-        weekend_note = ""
+    is_weekend = now_aest.weekday() in (4, 5, 6)
+    weekend_note = (
+        f"\nNOTE: This brief is published on {now_aest.strftime('%A')} AEST. "
+        f"The US market is CLOSED until Monday. Research weekend catalysts."
+    ) if is_weekend else ""
 
     prompt = STOCK_USER_PROMPT_TEMPLATE.format(
         date_str=date_str,
@@ -671,56 +347,15 @@ def fetch_top_stocks(
         aest_dates_str=aest_dates_str,
     ) + weekend_note
 
-    backoff_schedule = [60, 90, 120, 180, 240, 300]
-    last_err: Exception | None = None
-    message = None
-    for attempt in range(len(backoff_schedule) + 1):
-        try:
-            message = client.messages.create(
-                model=model,
-                max_tokens=10000,
-                system=STOCK_SYSTEM_PROMPT,
-                tools=[
-                    {
-                        "type": "web_search_20250305",
-                        "name": "web_search",
-                        "max_uses": max_searches,
-                    },
-                    TOP_STOCKS_TOOL,
-                ],
-                tool_choice={"type": "auto"},
-                messages=[{"role": "user", "content": prompt}],
-            )
-            break
-        except anthropic.RateLimitError as e:
-            last_err = e
-            if attempt >= len(backoff_schedule):
-                raise
-            wait = backoff_schedule[attempt]
-            print(f"[stocks] rate-limited; sleeping {wait}s…", flush=True)
-            time.sleep(wait)
-        except (anthropic.APIConnectionError, anthropic.APIStatusError) as e:
-            last_err = e
-            if attempt >= len(backoff_schedule):
-                raise
-            wait = min(60, backoff_schedule[attempt])
-            print(f"[stocks] API error {type(e).__name__}; sleeping {wait}s…", flush=True)
-            time.sleep(wait)
+    print(f"[stocks] querying Gemini {model} with Google Search…", flush=True)
+    raw_text = _gemini_call(client, model, STOCK_SYSTEM_PROMPT, prompt, "stocks")
 
-    if message is None:
-        raise last_err or RuntimeError("fetch_top_stocks: no response from Claude")
-
-    submission = None
-    for block in message.content:
-        if (
-            getattr(block, "type", None) == "tool_use"
-            and getattr(block, "name", "") == "submit_top_stocks"
-        ):
-            submission = block.input
-            break
-
-    if submission is None:
-        raise RuntimeError("fetch_top_stocks: model did not call submit_top_stocks")
+    try:
+        submission = _extract_json(raw_text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Gemini returned unparseable JSON for stocks. Error: {exc}"
+        ) from exc
 
     stocks = submission.get("stocks") or []
     stocks.sort(key=lambda s: s.get("rank", 99))
@@ -734,7 +369,34 @@ def fetch_top_stocks(
     }
 
 
-if __name__ == "__main__":
-    items = fetch_daily_news()
-    json.dump(items, sys.stdout, indent=2, ensure_ascii=False)
-    print()
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+def _normalise(item: dict[str, Any]) -> dict[str, Any]:
+    item.setdefault("image_url", "")
+    item.setdefault("video_channel", "")
+    item.setdefault("summary_bullets", [])
+    item.setdefault("reporting_angles", [])
+    item.setdefault("perspectives", [])
+    item.setdefault("visual_aid", {"type": "table", "title": "", "html": ""})
+    item.setdefault("lead_source", {"name": "", "url": ""})
+    video = item.get("video_url") or ""
+    item["video_url"] = video if "watch?v=" in video else ""
+    return item
+
+
+def _next_us_trading_date(now_aest: datetime, aest_tz, edt_tz):
+    from datetime import timedelta, time as _time
+    aest_weekday = now_aest.weekday()
+    edt_date = now_aest.astimezone(edt_tz).date()
+    if aest_weekday in (4, 5, 6):
+        days_to_monday = (7 - edt_date.weekday()) % 7
+        if days_to_monday == 0:
+            days_to_monday = 7
+        target = edt_date + timedelta(days=days_to_monday)
+    else:
+        target = edt_date + timedelta(days=1)
+        while target.weekday() in (5, 6):
+            target += timedelta(days=1)
+    return target
