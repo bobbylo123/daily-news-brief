@@ -1,79 +1,28 @@
-name: Daily News Brief
+name: Daily News Brief (manual fallback)
 
-# This workflow is triggered EXTERNALLY by cron-job.org at 23:00 UTC daily
-# (= 09:00 AEST Brisbane, which does not observe DST so this never shifts).
+# Modal.com is the primary runtime — see modal_app.py. It runs the brief at
+# 23:00 UTC daily with built-in retry. This workflow exists ONLY as a
+# manual-trigger fallback for emergencies (Modal outage, etc.). The
+# scheduled cron is intentionally NOT enabled here, to prevent double-send.
 #
-# Why workflow_dispatch instead of `schedule:` cron?
-#   GitHub Actions scheduled cron is deprioritised on low-traffic public
-#   repos and can be delayed 6-10 hours. workflow_dispatch fires within
-#   ~10 seconds of being called, which is what we need for a 09:00 delivery.
-#
-# A second `schedule:` fallback fires at 22:30 UTC (target 08:30 AEST).
-# It WILL be delayed by GitHub, but acts as a safety net if the external
-# trigger fails entirely — at worst the brief still arrives same-day.
-# A gate-check skips the fallback run when a successful run already
-# happened on the same Brisbane calendar day.
+# To trigger manually: Actions tab → "Daily News Brief (manual fallback)"
+# → Run workflow → main.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '30 22 * * *'
 
 jobs:
   brief:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      actions: read
-      contents: read
     steps:
-      - name: Skip fallback if today already delivered
-        id: gate
-        if: github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          TODAY_AEST=$(TZ=Australia/Brisbane date +%Y-%m-%d)
-          # Pull last 10 successful runs of THIS workflow, ignoring the
-          # current run (which is still "in_progress"). If any of them
-          # finished on TODAY_AEST, skip — today's brief already shipped.
-          ALREADY=$(curl -fsS \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/actions/workflows/daily-brief.yml/runs?status=success&per_page=10" \
-            | python3 -c "
-          import json,sys,datetime
-          today='$TODAY_AEST'
-          tz=datetime.timezone(datetime.timedelta(hours=10))
-          for r in json.load(sys.stdin)['workflow_runs']:
-              ts=datetime.datetime.fromisoformat(r['updated_at'].replace('Z','+00:00')).astimezone(tz)
-              if ts.strftime('%Y-%m-%d')==today:
-                  print('yes'); break
-          ")
-          if [ "$ALREADY" = "yes" ]; then
-            echo "already=true" >> "$GITHUB_OUTPUT"
-            echo "Today ($TODAY_AEST) already delivered. Skipping fallback."
-          else
-            echo "already=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
-        if: steps.gate.outputs.already != 'true'
-
       - uses: actions/setup-python@v4
-        if: steps.gate.outputs.already != 'true'
         with:
           python-version: '3.11'
-
-      - name: Install dependencies
-        if: steps.gate.outputs.already != 'true'
-        run: pip install -r requirements.txt
-
-      - name: Generate and send brief
-        if: steps.gate.outputs.already != 'true'
+      - run: pip install -r requirements.txt
+      - run: python daily_brief.py
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: blhcobby322@gmail.com
-        run: python daily_brief.py
